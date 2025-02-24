@@ -7,7 +7,7 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTheme } from '@/hooks/useTheme';
 import { getStyles } from '@/utils/style';
-import { eventDispatcher } from '@/utils/event';
+import { tauriQuitApp } from '@/utils/window';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants';
 
 interface UseBookShortcutsProps {
@@ -61,6 +61,22 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     getView(sideBarBookKey)?.history.back();
   };
 
+  const goHalfPageDown = () => {
+    const view = getView(sideBarBookKey);
+    const viewSettings = getViewSettings(sideBarBookKey ?? '');
+    if (view && viewSettings && viewSettings.scrolled) {
+      view.next(view.renderer.size / 2);
+    }
+  };
+
+  const goHalfPageUp = () => {
+    const view = getView(sideBarBookKey);
+    const viewSettings = getViewSettings(sideBarBookKey ?? '');
+    if (view && viewSettings && viewSettings.scrolled) {
+      view.prev(view.renderer.size / 2);
+    }
+  };
+
   const goForward = () => {
     getView(sideBarBookKey)?.history.forward();
   };
@@ -72,9 +88,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const quitApp = async () => {
     // on web platform use browser's default shortcut to close the tab
     if (isTauriAppPlatform()) {
-      await eventDispatcher.dispatch('quit-app');
-      const { exit } = await import('@tauri-apps/plugin-process');
-      await exit(0);
+      await tauriQuitApp();
     }
   };
 
@@ -123,6 +137,8 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       onGoRight: goRight,
       onGoPrev: goPrev,
       onGoNext: goNext,
+      onGoHalfPageDown: goHalfPageDown,
+      onGoHalfPageUp: goHalfPageUp,
       onGoBack: goBack,
       onGoForward: goForward,
       onZoomIn: zoomIn,

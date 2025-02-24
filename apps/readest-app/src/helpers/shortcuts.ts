@@ -4,6 +4,7 @@ export interface ShortcutConfig {
   onToggleNotebook: string[];
   onToggleSearchBar: string[];
   onToggleScrollMode: string[];
+  onToggleSelectMode: string[];
   onOpenFontLayoutSettings: string[];
   onReloadPage: string[];
   onQuitApp: string[];
@@ -11,6 +12,8 @@ export interface ShortcutConfig {
   onGoRight: string[];
   onGoNext: string[];
   onGoPrev: string[];
+  onGoHalfPageDown: string[];
+  onGoHalfPageUp: string[];
   onGoBack: string[];
   onGoForward: string[];
   onZoomIn: string[];
@@ -26,6 +29,7 @@ const DEFAULT_SHORTCUTS: ShortcutConfig = {
   onToggleNotebook: ['n'],
   onToggleSearchBar: ['ctrl+f', 'cmd+f'],
   onToggleScrollMode: ['shift+j'],
+  onToggleSelectMode: ['shift+s'],
   onOpenFontLayoutSettings: ['shift+f'],
   onReloadPage: ['shift+r'],
   onQuitApp: ['ctrl+q', 'cmd+q'],
@@ -33,17 +37,20 @@ const DEFAULT_SHORTCUTS: ShortcutConfig = {
   onGoRight: ['ArrowRight', 'PageDown', 'l', ' '],
   onGoNext: ['ArrowDown', 'j'],
   onGoPrev: ['ArrowUp', 'k'],
+  onGoHalfPageDown: ['shift+ArrowDown', 'd'],
+  onGoHalfPageUp: ['shift+ArrowUp', 'u'],
   onGoBack: ['shift+ArrowLeft', 'shift+h'],
   onGoForward: ['shift+ArrowRight', 'shift+l'],
   onZoomIn: ['ctrl+=', 'cmd+=', 'shift+='],
   onZoomOut: ['ctrl+-', 'cmd+-', 'shift+-'],
   onResetZoom: ['ctrl+0', 'cmd+0'],
   onSaveNote: ['ctrl+Enter'],
-  onCloseNote: ['Escape']
+  onCloseNote: ['Escape'],
 };
 
 // Load shortcuts from localStorage or fallback to defaults
 export const loadShortcuts = (): ShortcutConfig => {
+  if (typeof localStorage === 'undefined') return DEFAULT_SHORTCUTS;
   const customShortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '{}');
   return {
     ...DEFAULT_SHORTCUTS,
