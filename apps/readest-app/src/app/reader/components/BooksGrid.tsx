@@ -17,6 +17,7 @@ import SettingsDialog from './settings/SettingsDialog';
 import Annotator from './annotator/Annotator';
 import FootnotePopup from './FootnotePopup';
 import HintInfo from './HintInfo';
+import DoubleBorder from './DoubleBorder';
 
 interface BooksGridProps {
   bookKeys: string[];
@@ -27,7 +28,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
   const { appService } = useEnv();
   const { getConfig, getBookData } = useBookDataStore();
   const { getProgress, getViewState, getViewSettings } = useReaderStore();
-  const { sideBarBookKey } = useSidebarStore();
+  const { isSideBarVisible, sideBarBookKey } = useSidebarStore();
   const { isFontLayoutSettingsDialogOpen, setFontLayoutSettingsDialogOpen } = useSettingsStore();
   const gridTemplate = getGridTemplate(bookKeys.length, window.innerWidth / window.innerHeight);
 
@@ -60,15 +61,19 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
 
         const { section, pageinfo, sectionLabel } = progress || {};
         const isBookmarked = getViewState(bookKey)?.ribbonVisible;
-        const marginGap = `${viewSettings.gapPercent}%`;
+        const horizontalGapPercent = viewSettings.gapPercent;
+        const verticalMarginPixels = viewSettings.marginPx;
 
         return (
           <div
             id={`gridcell-${bookKey}`}
             key={bookKey}
-            className={`${appService?.hasRoundedWindow ? 'rounded-window' : ''} relative h-full w-full overflow-hidden`}
+            className={clsx(
+              'relative h-full w-full overflow-hidden',
+              !isSideBarVisible && appService?.hasRoundedWindow && 'rounded-window',
+            )}
           >
-            {isBookmarked && <Ribbon width={marginGap} />}
+            {isBookmarked && <Ribbon width={`${horizontalGapPercent}%`} />}
             <HeaderBar
               bookKey={bookKey}
               bookTitle={book.title}
@@ -78,21 +83,71 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
               onSetSettingsDialogOpen={setFontLayoutSettingsDialogOpen}
             />
             <FoliateViewer bookKey={bookKey} bookDoc={bookDoc} config={config} />
-            <FootnotePopup bookKey={bookKey} bookDoc={bookDoc} />
-            {viewSettings.scrolled ? null : (
+            {viewSettings.vertical && viewSettings.scrolled && (
               <>
-                <SectionInfo section={sectionLabel} gapLeft={marginGap} />
-                <HintInfo bookKey={bookKey} gapRight={marginGap} />
-                <PageInfoView
-                  bookFormat={book.format}
-                  section={section ?? null}
-                  pageinfo={pageinfo ?? null}
-                  gapRight={marginGap}
+                <div
+                  className='bg-base-100 absolute left-0 top-0 h-full'
+                  style={{
+                    width: `calc(${horizontalGapPercent}%)`,
+                    height: `calc(100% - ${verticalMarginPixels}px)`,
+                  }}
+                />
+                <div
+                  className='bg-base-100 absolute right-0 top-0 h-full'
+                  style={{
+                    width: `calc(${horizontalGapPercent}%)`,
+                    height: `calc(100% - ${verticalMarginPixels}px)`,
+                  }}
                 />
               </>
             )}
+            {viewSettings.vertical && viewSettings.doubleBorder && (
+              <DoubleBorder
+                showHeader={viewSettings.showHeader}
+                showFooter={viewSettings.showFooter}
+                borderColor={viewSettings.borderColor}
+                horizontalGap={horizontalGapPercent}
+                verticalMargin={verticalMarginPixels}
+              />
+            )}
+            {viewSettings.showHeader && (
+              <SectionInfo
+                section={sectionLabel}
+                showDoubleBorder={viewSettings.vertical && viewSettings.doubleBorder}
+                isScrolled={viewSettings.scrolled}
+                isVertical={viewSettings.vertical}
+                horizontalGap={horizontalGapPercent}
+                verticalMargin={verticalMarginPixels}
+              />
+            )}
+            <HintInfo
+              bookKey={bookKey}
+              showDoubleBorder={viewSettings.vertical && viewSettings.doubleBorder}
+              isVertical={viewSettings.vertical}
+              horizontalGap={horizontalGapPercent}
+              verticalMargin={verticalMarginPixels}
+            />
+            {viewSettings.showFooter && (
+              <PageInfoView
+                bookFormat={book.format}
+                section={section}
+                pageinfo={pageinfo}
+                showDoubleBorder={viewSettings.vertical && viewSettings.doubleBorder}
+                isScrolled={viewSettings.scrolled}
+                isVertical={viewSettings.vertical}
+                horizontalGap={horizontalGapPercent}
+                verticalMargin={verticalMarginPixels}
+              />
+            )}
             <Annotator bookKey={bookKey} />
-            <FooterBar bookKey={bookKey} pageinfo={pageinfo} isHoveredAnim={false} />
+            <FootnotePopup bookKey={bookKey} bookDoc={bookDoc} />
+            <FooterBar
+              bookKey={bookKey}
+              bookFormat={book.format}
+              section={section}
+              pageinfo={pageinfo}
+              isHoveredAnim={false}
+            />
             {isFontLayoutSettingsDialogOpen && <SettingsDialog bookKey={bookKey} config={config} />}
           </div>
         );

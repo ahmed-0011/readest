@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { navigateToLibrary, navigateToReader } from '@/utils/nav';
 import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -9,7 +9,7 @@ import { useLongPress } from '@/hooks/useLongPress';
 import { Menu, MenuItem } from '@tauri-apps/api/menu';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { getOSPlatform } from '@/utils/misc';
-import { getFilename } from '@/utils/book';
+import { getLocalBookFilename } from '@/utils/book';
 import { BOOK_UNGROUPED_ID, BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { FILE_REVEAL_LABELS, FILE_REVEAL_PLATFORMS } from '@/utils/os';
 import { Book, BookGroupType, BooksGroup } from '@/types/book';
@@ -72,9 +72,9 @@ interface BookshelfItemProps {
   transferProgress: number | null;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   toggleSelection: (hash: string) => void;
-  handleBookUpload: (book: Book) => void;
-  handleBookDownload: (book: Book) => void;
-  handleBookDelete: (book: Book) => void;
+  handleBookUpload: (book: Book) => Promise<boolean>;
+  handleBookDownload: (book: Book) => Promise<boolean>;
+  handleBookDelete: (book: Book) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
 }
@@ -94,6 +94,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
 }) => {
   const _ = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
   const { updateBook } = useLibraryStore();
@@ -109,9 +110,8 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       let available = false;
       const loadingTimeout = setTimeout(() => setLoading(true), 200);
       try {
-        await handleBookDownload(book);
+        available = await handleBookDownload(book);
         updateBook(envConfig, book);
-        available = true;
       } finally {
         if (loadingTimeout) clearTimeout(loadingTimeout);
         setLoading(false);
@@ -134,7 +134,9 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     if (isSelectMode) {
       toggleSelection(group.id);
     } else {
-      navigateToLibrary(router, `group=${group.id}`);
+      const params = new URLSearchParams(searchParams?.toString());
+      params.set('group', group.id);
+      navigateToLibrary(router, `${params.toString()}`);
     }
   };
 
@@ -153,7 +155,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     const showBookInFinderMenuItem = await MenuItem.new({
       text: _(fileRevealLabel),
       action: async () => {
-        const folder = `${settings.localBooksDir}/${getFilename(book)}`;
+        const folder = `${settings.localBooksDir}/${getLocalBookFilename(book)}`;
         revealItemInDir(folder);
       },
     });

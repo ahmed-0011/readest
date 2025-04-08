@@ -1,10 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { supabase, createSupabaseClient } from '@/utils/supabase';
 import { corsAllMethods, runMiddleware } from '@/utils/cors';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getStoragePlanData } from '@/utils/access';
-import { s3Client } from '@/utils/s3';
+import { getUploadSignedUrl } from '@/utils/object';
 
 const getUserAndToken = async (authHeader: string | undefined) => {
   if (!authHeader) return {};
@@ -42,13 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ error: 'Insufficient storage quota', usage });
     }
 
-    const objectKey = `${user.id}/${fileName}`;
+    const fileKey = `${user.id}/${fileName}`;
     const supabase = createSupabaseClient(token);
     const { data: existingRecord, error: fetchError } = await supabase
       .from('files')
       .select('*')
       .eq('user_id', user.id)
-      .eq('file_key', objectKey)
+      .eq('file_key', fileKey)
       .limit(1)
       .single();
 
@@ -65,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           {
             user_id: user.id,
             book_hash: bookHash,
-            file_key: objectKey,
+            file_key: fileKey,
             file_size: fileSize,
           },
         ])
@@ -75,23 +73,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (insertError) return res.status(500).json({ error: insertError.message });
     }
 
-    const signableHeaders = new Set<string>();
-    signableHeaders.add('content-length');
-    const putCommand = new PutObjectCommand({
-      Bucket: process.env['R2_BUCKET_NAME'] || '',
-      Key: objectKey,
-      ContentLength: objSize,
-    });
-
     try {
-      const uploadUrl = await getSignedUrl(s3Client, putCommand, {
-        expiresIn: 1800,
-        signableHeaders,
-      });
+      const uploadUrl = await getUploadSignedUrl(
+        fileKey,
+        objSize,
+        1800,
+      );
 
       res.status(200).json({
         uploadUrl,
-        fileKey: objectKey,
+        fileKey,
         usage: usage + fileSize,
         quota,
       });

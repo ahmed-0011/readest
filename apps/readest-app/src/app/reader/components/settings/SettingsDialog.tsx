@@ -28,7 +28,9 @@ type TabConfig = {
 
 const SettingsDialog: React.FC<{ bookKey: string; config: BookConfig }> = ({ bookKey }) => {
   const _ = useTranslation();
-  const [activePanel, setActivePanel] = useState<SettingsPanelType>('Font');
+  const [activePanel, setActivePanel] = useState<SettingsPanelType>(
+    (localStorage.getItem('lastConfigPanel') || 'Font') as SettingsPanelType,
+  );
   const { setFontLayoutSettingsDialogOpen } = useSettingsStore();
 
   const tabConfig = [
@@ -54,6 +56,11 @@ const SettingsDialog: React.FC<{ bookKey: string; config: BookConfig }> = ({ boo
     },
   ] as TabConfig[];
 
+  const handleSetActivePanel = (tab: SettingsPanelType) => {
+    setActivePanel(tab);
+    localStorage.setItem('lastConfigPanel', tab);
+  };
+
   const handleClose = () => {
     setFontLayoutSettingsDialogOpen(false);
   };
@@ -64,7 +71,8 @@ const SettingsDialog: React.FC<{ bookKey: string; config: BookConfig }> = ({ boo
         isOpen={true}
         onClose={handleClose}
         className='modal-open'
-        boxClassName='sm:w-1/2 sm:min-w-[480px] sm:h-[65%]'
+        boxClassName='sm:min-w-[520px]'
+        snapHeight={window.innerWidth < 640 ? 0.7 : undefined}
         header={
           <div className='flex w-full items-center justify-between'>
             <button
@@ -76,15 +84,15 @@ const SettingsDialog: React.FC<{ bookKey: string; config: BookConfig }> = ({ boo
             >
               <MdArrowBackIosNew />
             </button>
-            <div className='dialog-tabs flex h-10 max-w-[100%] flex-grow items-center justify-around pl-4'>
+            <div className='dialog-tabs flex h-10 max-w-[100%] flex-grow items-center gap-2 pl-4'>
               {tabConfig.map(({ tab, icon: Icon, label }) => (
                 <button
                   key={tab}
                   className={clsx(
-                    'btn btn-ghost text-base-content h-8 min-h-8',
+                    'btn btn-ghost text-base-content btn-sm',
                     activePanel === tab ? 'btn-active' : '',
                   )}
-                  onClick={() => setActivePanel(tab)}
+                  onClick={() => handleSetActivePanel(tab)}
                 >
                   <Icon className='mr-0' />
                   {window.innerWidth >= 500 ? label : ''}

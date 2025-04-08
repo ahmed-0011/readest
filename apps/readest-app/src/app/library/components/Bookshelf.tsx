@@ -10,6 +10,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { navigateToLibrary, navigateToReader } from '@/utils/nav';
+import { formatAuthors, formatTitle } from '@/utils/book';
 import { isMd5 } from '@/utils/md5';
 
 import Alert from '@/components/Alert';
@@ -21,9 +22,9 @@ interface BookshelfProps {
   libraryBooks: Book[];
   isSelectMode: boolean;
   handleImportBooks: () => void;
-  handleBookUpload: (book: Book) => void;
-  handleBookDownload: (book: Book) => void;
-  handleBookDelete: (book: Book) => void;
+  handleBookUpload: (book: Book) => Promise<boolean>;
+  handleBookDownload: (book: Book) => Promise<boolean>;
+  handleBookDelete: (book: Book) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
   booksTransferProgress: { [key: string]: number | null };
@@ -49,6 +50,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   const [showSelectModeActions, setShowSelectModeActions] = useState(false);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showGroupingModal, setShowGroupingModal] = useState(false);
+  const [queryTerm, setQueryTerm] = useState<string | null>(null);
   const [navBooksGroup, setNavBooksGroup] = useState<BooksGroup | null>(null);
   const [importBookUrl] = useState(searchParams?.get('url') || '');
   const isImportingBook = useRef(false);
@@ -86,6 +88,12 @@ const Bookshelf: React.FC<BookshelfProps> = ({
 
   useEffect(() => {
     const group = searchParams?.get('group') || '';
+    const query = searchParams?.get('q') || '';
+    if (query) {
+      setQueryTerm(query);
+    } else {
+      setQueryTerm(null);
+    }
     if (group) {
       const booksGroup = allBookshelfItems.find(
         (item) => 'name' in item && item.id === group,
@@ -93,11 +101,11 @@ const Bookshelf: React.FC<BookshelfProps> = ({
       if (booksGroup) {
         setNavBooksGroup(booksGroup);
       } else {
-        navigateToLibrary(router);
+        navigateToLibrary(router, query ? `q=${query}` : undefined);
       }
     } else {
       setNavBooksGroup(null);
-      navigateToLibrary(router);
+      navigateToLibrary(router, query ? `q=${query}` : undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, libraryBooks, showGroupingModal]);
@@ -137,16 +145,28 @@ const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   const currentBookshelfItems = navBooksGroup ? navBooksGroup.books : allBookshelfItems;
+  const bookFilter = (item: Book, queryTerm: string) => {
+    if (item.deletedAt) return false;
+    const searchTerm = new RegExp(queryTerm, 'i');
+    const title = formatTitle(item.title);
+    const authors = formatAuthors(item.author);
+    return searchTerm.test(title) || searchTerm.test(authors);
+  };
+  const filteredBookshelfItems = currentBookshelfItems.filter((item) => {
+    if ('name' in item) return item.books.some((book) => bookFilter(book, queryTerm || ''));
+    else if (queryTerm) return bookFilter(item, queryTerm);
+    return true;
+  });
 
   return (
     <div className='bookshelf'>
       <div
         className={clsx(
           'transform-wrapper grid flex-1 gap-x-4 sm:gap-x-0',
-          'grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8',
+          'grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-12',
         )}
       >
-        {currentBookshelfItems.map((item, index) => (
+        {filteredBookshelfItems.map((item, index) => (
           <BookshelfItem
             key={`library-item-${index}`}
             item={item}
@@ -210,7 +230,7 @@ const Bookshelf: React.FC<BookshelfProps> = ({
               )}
             >
               <LuFolderPlus />
-              <div>{_('Add to Group')}</div>
+              <div>{_('Group')}</div>
             </button>
             <button
               onClick={deleteSelectedBooks}

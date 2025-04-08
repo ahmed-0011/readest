@@ -4,8 +4,10 @@ export type HighlightStyle = 'highlight' | 'underline' | 'squiggly';
 export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue' | 'violet';
 
 export interface Book {
-  // if Book is a remote book we just lazy load the book content
+  // if Book is a remote book we just lazy load the book content via url
   url?: string;
+  // if Book is a transient local book we can load the book content via filePath
+  filePath?: string;
   hash: string;
   format: BookFormat;
   title: string;
@@ -24,7 +26,7 @@ export interface Book {
   downloadedAt?: number | null;
 
   lastUpdated?: number; // deprecated in favor of updatedAt
-  progress?: [number, number]; // Add progress field: [current, total]
+  progress?: [number, number]; // Add progress field: [current, total], 1-based page number
 }
 
 export interface BookGroupType {
@@ -53,6 +55,13 @@ export interface BookNote {
   deletedAt?: number | null;
 }
 
+export interface BooknoteGroup {
+  id: number;
+  href: string;
+  label: string;
+  booknotes: BookNote[];
+}
+
 export type WritingMode = 'auto' | 'horizontal-tb' | 'horizontal-rl' | 'vertical-rl';
 
 export interface BookLayout {
@@ -60,12 +69,19 @@ export interface BookLayout {
   gapPercent: number;
   scrolled: boolean;
   disableClick: boolean;
+  swapClickArea: boolean;
+  continuousScroll: boolean;
   maxColumnCount: number;
   maxInlineSize: number;
   maxBlockSize: number;
   animated: boolean;
   writingMode: WritingMode;
   vertical: boolean;
+  rtl: boolean;
+  doubleBorder: boolean;
+  borderColor: string;
+  showHeader: boolean;
+  showFooter: boolean;
 }
 
 export interface BookStyle {
@@ -89,6 +105,7 @@ export interface BookFont {
   sansSerifFont: string;
   monospaceFont: string;
   defaultFont: string;
+  defaultCJKFont: string;
   defaultFontSize: number;
   minimumFontSize: number;
   fontWeight: number;
@@ -96,6 +113,7 @@ export interface BookFont {
 
 export interface ViewConfig {
   sideBarTab: string;
+  uiLanguage: string;
 }
 
 export interface TTSConfig {
@@ -143,7 +161,7 @@ export interface BookSearchResult {
 
 export interface BookConfig {
   bookHash?: string;
-  progress?: [number, number];
+  progress?: [number, number]; // [current pagenum, total pagenum], 1-based page number
   location?: string;
   booknotes?: BookNote[];
   searchConfig?: Partial<BookSearchConfig>;

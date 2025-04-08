@@ -12,17 +12,20 @@ import { IoArrowBack } from 'react-icons/io5';
 
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/utils/supabase';
-import { useTheme } from '@/hooks/useTheme';
 import { useEnv } from '@/context/EnvContext';
+import { useThemeStore } from '@/store/themeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useTrafficLightStore } from '@/store/trafficLightStore';
 import { isTauriAppPlatform } from '@/services/environment';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { start, cancel, onUrl, onInvalidUrl } from '@fabianlars/tauri-plugin-oauth';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { handleAuthCallback } from '@/helpers/auth';
 import { getAppleIdAuth, Scope } from './utils/appleIdAuth';
-import { authWithSafari } from './utils/safariAuth';
+import { authWithCustomTab, authWithSafari } from './utils/nativeAuth';
+import { READEST_WEB_BASE_URL } from '@/services/constants';
+import WindowButtons from '@/components/WindowButtons';
 
 type OAuthProvider = 'google' | 'apple' | 'azure' | 'github';
 
@@ -38,8 +41,8 @@ interface ProviderLoginProp {
   label: string;
 }
 
-const WEB_AUTH_CALLBACK = 'https://web.readest.com/auth/callback';
-const DEEPLINK_CALLBACK = 'readest://auth/callback';
+const WEB_AUTH_CALLBACK = `${READEST_WEB_BASE_URL}/auth/callback`;
+const DEEPLINK_CALLBACK = 'readest://auth-callback';
 
 const ProviderLogin: React.FC<ProviderLoginProp> = ({ provider, handleSignIn, Icon, label }) => {
   return (
@@ -47,11 +50,11 @@ const ProviderLogin: React.FC<ProviderLoginProp> = ({ provider, handleSignIn, Ic
       onClick={() => handleSignIn(provider)}
       className={clsx(
         'mb-2 flex w-64 items-center justify-center rounded border p-2.5',
-        'bg-base-100 border-gray-300 shadow-sm transition hover:bg-gray-50',
+        'bg-base-100 border-base-300 hover:bg-base-200 shadow-sm transition',
       )}
     >
       <Icon />
-      <span className='text-neutral-content/70 px-2 text-sm'>{label}</span>
+      <span className='text-base-content/75 px-2 text-sm'>{label}</span>
     </button>
   );
 };
@@ -61,22 +64,29 @@ export default function AuthPage() {
   const router = useRouter();
   const { login } = useAuth();
   const { envConfig, appService } = useEnv();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode } = useThemeStore();
+  const { isTrafficLightVisible } = useTrafficLightStore();
   const { settings, setSettings, saveSettings } = useSettingsStore();
   const [port, setPort] = useState<number | null>(null);
   const isOAuthServerRunning = useRef(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  const headerRef = useRef<HTMLDivElement>(null);
+
   const getTauriRedirectTo = (isOAuth: boolean) => {
     if (process.env.NODE_ENV === 'production' || appService?.isMobile) {
-      if (appService?.isIOSApp) {
+      if (appService?.isMobile) {
         return isOAuth ? DEEPLINK_CALLBACK : WEB_AUTH_CALLBACK;
-      } else if (appService?.isAndroidApp) {
-        return WEB_AUTH_CALLBACK;
       }
       return DEEPLINK_CALLBACK;
     }
     return `http://localhost:${port}`; // only for development env on Desktop
+  };
+
+  const getWebRedirectTo = () => {
+    return process.env.NODE_ENV === 'production'
+      ? WEB_AUTH_CALLBACK
+      : `${window.location.origin}/auth/callback`;
   };
 
   const tauriSignInApple = async () => {
@@ -123,22 +133,28 @@ export default function AuthPage() {
       if (res) {
         handleOAuthUrl(res.redirectUrl);
       }
+    } else if (appService?.isAndroidApp) {
+      const res = await authWithCustomTab({ authUrl: data.url });
+      if (res) {
+        handleOAuthUrl(res.redirectUrl);
+      }
     } else {
       await openUrl(data.url);
     }
   };
 
   const handleOAuthUrl = async (url: string) => {
-    console.log('Received OAuth URL:', url);
+    console.log('Handle OAuth URL:', url);
     const hashMatch = url.match(/#(.*)/);
     if (hashMatch) {
       const hash = hashMatch[1];
       const params = new URLSearchParams(hash);
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
+      const type = params.get('type');
       const next = params.get('next') ?? '/';
       if (accessToken) {
-        handleAuthCallback({ accessToken, refreshToken, next, login, navigate: router.push });
+        handleAuthCallback({ accessToken, refreshToken, type, next, login, navigate: router.push });
       }
     }
   };
@@ -235,13 +251,6 @@ export default function AuthPage() {
           link_text: _('Forgot your password?'),
           confirmation_text: _('Check your email for the password reset link'),
         },
-        update_password: {
-          password_label: _('New Password'),
-          password_input_placeholder: _('Your new password'),
-          button_label: _('Update password'),
-          loading_button_label: _('Updating password ...'),
-          confirmation_text: _('Your password has been updated'),
-        },
         verify_otp: {
           email_input_label: _('Email address'),
           email_input_placeholder: _('Your email address'),
@@ -298,22 +307,36 @@ export default function AuthPage() {
   return isTauriAppPlatform() ? (
     <div
       className={clsx(
-        'mt-6 flex',
+        'fixed inset-0 z-0 flex select-none flex-col items-center overflow-y-auto',
+        'bg-base-100 border-base-200 border',
         appService?.hasSafeAreaInset && 'pt-[env(safe-area-inset-top)]',
-        appService?.hasTrafficLight && 'pt-11',
       )}
     >
-      <button
-        onClick={handleGoBack}
+      <div
+        ref={headerRef}
         className={clsx(
-          'btn btn-ghost fixed left-4 h-8 min-h-8 w-8 p-0',
-          appService?.hasSafeAreaInset && 'top-[calc(env(safe-area-inset-top)+16px)]',
-          appService?.hasTrafficLight && 'top-11',
+          'fixed z-10 flex w-full items-center justify-between py-2 pe-6 ps-4',
+          appService?.hasTrafficLight && 'pt-11',
         )}
       >
-        <IoArrowBack className='text-base-content' />
-      </button>
-      <div style={{ maxWidth: '420px', margin: 'auto', padding: '2rem' }}>
+        <button onClick={handleGoBack} className={clsx('btn btn-ghost h-8 min-h-8 w-8 p-0')}>
+          <IoArrowBack className='text-base-content' />
+        </button>
+
+        {appService?.hasWindowBar && (
+          <WindowButtons
+            headerRef={headerRef}
+            showMinimize={!isTrafficLightVisible}
+            showMaximize={!isTrafficLightVisible}
+            showClose={!isTrafficLightVisible}
+            onClose={handleGoBack}
+          />
+        )}
+      </div>
+      <div
+        className={clsx('z-20 pb-8', appService?.hasTrafficLight ? 'mt-24' : 'mt-12')}
+        style={{ maxWidth: '420px' }}
+      >
         <ProviderLogin
           provider='google'
           handleSignIn={tauriSignIn}
@@ -332,20 +355,16 @@ export default function AuthPage() {
           Icon={FaGithub}
           label={_('Sign in with GitHub')}
         />
-        {!appService?.isIOSApp && (
-          <div>
-            <hr className='my-3 mt-6 w-64 border-t border-gray-200' />
-            <Auth
-              supabaseClient={supabase}
-              appearance={{ theme: ThemeSupa }}
-              theme={isDarkMode ? 'dark' : 'light'}
-              magicLink={true}
-              providers={[]}
-              redirectTo={getTauriRedirectTo(false)}
-              localization={getAuthLocalization()}
-            />
-          </div>
-        )}
+        <hr className='border-base-300 my-3 mt-6 w-64 border-t' />
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ theme: ThemeSupa }}
+          theme={isDarkMode ? 'dark' : 'light'}
+          magicLink={true}
+          providers={[]}
+          redirectTo={getTauriRedirectTo(false)}
+          localization={getAuthLocalization()}
+        />
       </div>
     </div>
   ) : (
@@ -362,7 +381,7 @@ export default function AuthPage() {
         theme={isDarkMode ? 'dark' : 'light'}
         magicLink={true}
         providers={['google', 'apple', 'github']}
-        redirectTo='/auth/callback'
+        redirectTo={getWebRedirectTo()}
         localization={getAuthLocalization()}
       />
     </div>

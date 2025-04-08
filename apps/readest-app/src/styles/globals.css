@@ -7,6 +7,20 @@
   --foreground: #171717;
   border-radius: 10px;
   scrollbar-gutter: auto !important;
+  overscroll-behavior: none;
+}
+
+/* Fixes the scrollbar gutter issue for DaisyUI */
+/* https://github.com/saadeghi/daisyui/issues/3040#issuecomment-2250530354 */
+:root:has(
+    :is(
+        .modal-open,
+        .modal:target,
+        .modal-toggle:checked + .modal,
+        .modal[open]
+      )
+  ) {
+  scrollbar-gutter: unset !important;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -35,6 +49,7 @@ body {
     sans-serif;
   border-radius: 10px;
   background-color: transparent;
+  cursor: default;
 }
 
 @layer utilities {
@@ -176,14 +191,6 @@ foliate-view {
   @apply hover:bg-base-100/50;
 }
 
-.config-item-top {
-  @apply rounded-t-2xl;
-}
-
-.config-item-bottom {
-  @apply rounded-b-2xl;
-}
-
 .collapse-arrow > .collapse-title:after {
   top: var(--top-override, default-value);
   inset-inline-end: var(--end-override, default-value);
@@ -202,7 +209,7 @@ foliate-view {
 }
 
 .scroll-container {
-  overflow-y: scroll;
+  overflow-y: auto;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
 }
@@ -261,4 +268,56 @@ foliate-view {
 .content.font-size-xs {
   font-size: 0.75em !important;
   line-height: 1em !important;
+}
+
+.writing-vertical-rl {
+  writing-mode: vertical-rl;
+}
+
+.direction-rtl {
+  direction: rtl;
+}
+
+.drop-zone {
+  position: relative;
+}
+
+.drag-over {
+  border: 2px dashed #4a90e2 !important;
+  background-color: rgba(74, 144, 226, 0.1) !important;
+  transition: all 0.2s ease-in-out;
+}
+
+.drag-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.drop-zone.drag-over .drag-overlay {
+  display: block;
+}
+
+.drop-indicator {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  padding: 20px;
+  background-color: theme('colors.base-300');
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+}
+
+.drop-zone.drag-over .drop-indicator {
+  display: block;
 }

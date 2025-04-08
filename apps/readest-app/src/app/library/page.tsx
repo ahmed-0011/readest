@@ -2,13 +2,13 @@
 
 import clsx from 'clsx';
 import * as React from 'react';
-import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef, useEffect, Suspense } from 'react';
+import { ReadonlyURLSearchParams, useRouter, useSearchParams } from 'next/navigation';
 
 import { Book } from '@/types/book';
 import { AppService } from '@/types/system';
 import { navigateToLogin, navigateToReader } from '@/utils/nav';
-import { getBaseFilename, listFormater } from '@/utils/book';
+import { getFilename, listFormater } from '@/utils/book';
 import { eventDispatcher } from '@/utils/event';
 import { ProgressPayload } from '@/utils/transfer';
 import { throttle } from '@/utils/throttle';
@@ -17,18 +17,21 @@ import { isTauriAppPlatform, hasUpdater } from '@/services/environment';
 import { checkForAppUpdates } from '@/helpers/updater';
 import { FILE_ACCEPT_FORMATS, SUPPORTED_FILE_EXTS } from '@/services/constants';
 import { impactFeedback } from '@tauri-apps/plugin-haptics';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 import { useEnv } from '@/context/EnvContext';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemeStore } from '@/store/themeStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { useTheme } from '@/hooks/useTheme';
 import { useDemoBooks } from './hooks/useDemoBooks';
 import { useBooksSync } from './hooks/useBooksSync';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
-import { tauriQuitApp } from '@/utils/window';
+import { useOpenWithBooks } from '@/hooks/useOpenWithBooks';
+import { tauriHandleSetAlwaysOnTop, tauriQuitApp } from '@/utils/window';
 
 import { AboutWindow } from '@/components/AboutWindow';
 import { Toast } from '@/components/Toast';
@@ -37,8 +40,14 @@ import LibraryHeader from './components/LibraryHeader';
 import Bookshelf from './components/Bookshelf';
 import BookDetailModal from '@/components/BookDetailModal';
 import useShortcuts from '@/hooks/useShortcuts';
+import DropIndicator from '@/components/DropIndicator';
 
-const LibraryPage = () => {
+const LibraryPageWithSearchParams = () => {
+  const searchParams = useSearchParams();
+  return <LibraryPageContent searchParams={searchParams} />;
+};
+
+const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchParams | null }) => {
   const router = useRouter();
   const { envConfig, appService } = useEnv();
   const { token, user } = useAuth();
@@ -47,10 +56,11 @@ const LibraryPage = () => {
     updateBook,
     setLibrary,
     checkOpenWithBooks,
-    clearOpenWithBooks,
+    setCheckOpenWithBooks,
   } = useLibraryStore();
   const _ = useTranslation();
-  const { updateAppTheme } = useTheme();
+  useTheme();
+  const { updateAppTheme } = useThemeStore();
   const { settings, setSettings, saveSettings } = useSettingsStore();
   const [loading, setLoading] = useState(false);
   const isInitiating = useRef(false);
@@ -60,8 +70,12 @@ const LibraryPage = () => {
   const [booksTransferProgress, setBooksTransferProgress] = useState<{
     [key: string]: number | null;
   }>({});
+  const [isDragging, setIsDragging] = useState(false);
   const demoBooks = useDemoBooks();
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  useOpenWithBooks();
 
   const { pullLibrary, pushLibrary } = useBooksSync({
     onSyncStart: () => setLoading(true),
@@ -90,17 +104,107 @@ const LibraryPage = () => {
         await checkForAppUpdates(_);
       }
     };
+    if (settings.alwaysOnTop) {
+      tauriHandleSetAlwaysOnTop(settings.alwaysOnTop);
+    }
     doCheckAppUpdates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
+  const handleDropedFiles = async (files: File[] | string[]) => {
+    if (files.length === 0) return;
+    const supportedFiles = files.filter((file) => {
+      let fileExt;
+      if (typeof file === 'string') {
+        fileExt = file.split('.').pop()?.toLowerCase();
+      } else {
+        fileExt = file.name.split('.').pop()?.toLowerCase();
+      }
+      return FILE_ACCEPT_FORMATS.includes(`.${fileExt}`);
+    });
+    if (supportedFiles.length === 0) {
+      eventDispatcher.dispatch('toast', {
+        message: _('No supported files found. Supported formats: {{formats}}', {
+          formats: FILE_ACCEPT_FORMATS,
+        }),
+        type: 'error',
+      });
+      return;
+    }
+
+    if (appService?.hasHaptics) {
+      impactFeedback('medium');
+    }
+
+    await importBooks(supportedFiles);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement> | DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement> | DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement> | DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      const files = Array.from(event.dataTransfer.files);
+      handleDropedFiles(files);
+    }
+  };
+
+  useEffect(() => {
+    const libraryPage = document.querySelector('.library-page');
+    if (!appService?.isMobile) {
+      libraryPage?.addEventListener('dragover', handleDragOver as unknown as EventListener);
+      libraryPage?.addEventListener('dragleave', handleDragLeave as unknown as EventListener);
+      libraryPage?.addEventListener('drop', handleDrop as unknown as EventListener);
+    }
+
+    if (isTauriAppPlatform()) {
+      const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type === 'over') {
+          setIsDragging(true);
+        } else if (event.payload.type === 'drop') {
+          setIsDragging(false);
+          handleDropedFiles(event.payload.paths);
+        } else {
+          setIsDragging(false);
+        }
+      });
+      return () => {
+        unlisten.then((fn) => fn());
+      };
+    }
+
+    return () => {
+      if (!appService?.isMobile) {
+        libraryPage?.removeEventListener('dragover', handleDragOver as unknown as EventListener);
+        libraryPage?.removeEventListener('dragleave', handleDragLeave as unknown as EventListener);
+        libraryPage?.removeEventListener('drop', handleDrop as unknown as EventListener);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageRef.current]);
+
   const processOpenWithFiles = React.useCallback(
     async (appService: AppService, openWithFiles: string[], libraryBooks: Book[]) => {
+      const settings = await appService.loadSettings();
       const bookIds: string[] = [];
       for (const file of openWithFiles) {
         console.log('Open with book:', file);
         try {
-          const book = await appService.importBook(file, libraryBooks);
+          const temp = !settings.autoImportBooksOnOpen;
+          const book = await appService.importBook(file, libraryBooks, true, true, false, temp);
           if (book) {
             bookIds.push(book.hash);
           }
@@ -113,7 +217,9 @@ const LibraryPage = () => {
 
       console.log('Opening books:', bookIds);
       if (bookIds.length > 0) {
-        navigateToReader(router, bookIds);
+        setTimeout(() => {
+          navigateToReader(router, bookIds);
+        }, 0);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +254,7 @@ const LibraryPage = () => {
       if (checkOpenWithBooks && isTauriAppPlatform()) {
         await handleOpenWithBooks(appService, libraryBooks);
       } else {
-        clearOpenWithBooks();
+        setCheckOpenWithBooks(false);
         setLibrary(libraryBooks);
       }
 
@@ -163,7 +269,7 @@ const LibraryPage = () => {
       if (openWithFiles.length > 0) {
         await processOpenWithFiles(appService, openWithFiles, libraryBooks);
       } else {
-        clearOpenWithBooks();
+        setCheckOpenWithBooks(false);
         setLibrary(libraryBooks);
       }
     };
@@ -171,10 +277,11 @@ const LibraryPage = () => {
     initLogin();
     initLibrary();
     return () => {
-      clearOpenWithBooks();
+      setCheckOpenWithBooks(false);
+      isInitiating.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (demoBooks.length > 0 && libraryLoaded) {
@@ -193,9 +300,14 @@ const LibraryPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoBooks, libraryLoaded]);
 
-  const importBooks = async (files: [string | File]) => {
+  const importBooks = async (files: (string | File)[]) => {
     setLoading(true);
     const failedFiles = [];
+    const errorMap: [string, string][] = [
+      ['No chapters detected.', _('No chapters detected.')],
+      ['Failed to parse EPUB.', _('Failed to parse the EPUB file.')],
+      ['Unsupported format.', _('This book format is not supported.')],
+    ];
     for (const file of files) {
       try {
         const book = await appService?.importBook(file, libraryBooks);
@@ -206,12 +318,17 @@ const LibraryPage = () => {
         }
       } catch (error) {
         const filename = typeof file === 'string' ? file : file.name;
-        const baseFilename = getBaseFilename(filename);
+        const baseFilename = getFilename(filename);
         failedFiles.push(baseFilename);
+        const errorMessage =
+          error instanceof Error
+            ? errorMap.find(([substring]) => error.message.includes(substring))?.[1] || ''
+            : '';
         eventDispatcher.dispatch('toast', {
-          message: _('Failed to import book(s): {{filenames}}', {
-            filenames: listFormater(false).format(failedFiles),
-          }),
+          message:
+            _('Failed to import book(s): {{filenames}}', {
+              filenames: listFormater(false).format(failedFiles),
+            }) + (errorMessage ? `\n${errorMessage}` : ''),
           type: 'error',
         });
         console.error('Failed to import book:', filename, error);
@@ -222,7 +339,10 @@ const LibraryPage = () => {
   };
 
   const selectFilesTauri = async () => {
-    return appService?.selectFiles('Select Books', SUPPORTED_FILE_EXTS);
+    const exts = appService?.isAndroidApp ? [] : SUPPORTED_FILE_EXTS;
+    const files = (await appService?.selectFiles(_('Select Books'), exts)) || [];
+    // Cannot filter out files on Android since some content providers may not return the file name
+    return files;
   };
 
   const selectFilesWeb = () => {
@@ -262,17 +382,20 @@ const LibraryPage = () => {
           title: book.title,
         }),
       });
+      return true;
     } catch (err) {
       if (err instanceof Error) {
         if (err.message.includes('Not authenticated') && settings.keepLogin) {
+          settings.keepLogin = false;
+          setSettings(settings);
           navigateToLogin(router);
-          return;
+          return false;
         } else if (err.message.includes('Insufficient storage quota')) {
           eventDispatcher.dispatch('toast', {
             type: 'error',
             message: _('Insufficient storage quota'),
           });
-          return;
+          return false;
         }
       }
       eventDispatcher.dispatch('toast', {
@@ -281,6 +404,7 @@ const LibraryPage = () => {
           title: book.title,
         }),
       });
+      return false;
     }
   };
 
@@ -297,6 +421,7 @@ const LibraryPage = () => {
           title: book.title,
         }),
       });
+      return true;
     } catch {
       eventDispatcher.dispatch('toast', {
         message: _('Failed to download book: {{title}}', {
@@ -304,6 +429,7 @@ const LibraryPage = () => {
         }),
         type: 'error',
       });
+      return false;
     }
   };
 
@@ -319,6 +445,7 @@ const LibraryPage = () => {
           title: book.title,
         }),
       });
+      return true;
     } catch {
       eventDispatcher.dispatch('toast', {
         message: _('Failed to delete book: {{title}}', {
@@ -326,15 +453,17 @@ const LibraryPage = () => {
         }),
         type: 'error',
       });
+      return false;
     }
   };
 
   const handleImportBooks = async () => {
+    setIsSelectMode(false);
     console.log('Importing books...');
     let files;
 
     if (isTauriAppPlatform()) {
-      if (appService?.isMobile) {
+      if (appService?.isIOSApp) {
         files = (await selectFilesWeb()) as [File];
       } else {
         files = (await selectFilesTauri()) as [string];
@@ -379,6 +508,7 @@ const LibraryPage = () => {
 
   return (
     <div
+      ref={pageRef}
       className={clsx(
         'library-page bg-base-200 text-base-content flex select-none flex-col overflow-hidden',
         appService?.isIOSApp ? 'h-[100vh]' : 'h-dvh',
@@ -402,11 +532,13 @@ const LibraryPage = () => {
           <div
             ref={containerRef}
             className={clsx(
-              'scroll-container mt-12 flex-grow overflow-auto px-4 sm:px-2',
-              appService?.hasSafeAreaInset && 'mt-[calc(48px+env(safe-area-inset-top))]',
+              'scroll-container drop-zone mt-[48px] flex-grow overflow-y-auto px-4 sm:px-2',
+              appService?.hasSafeAreaInset && 'mt-[calc(52px+env(safe-area-inset-top))]',
               appService?.hasSafeAreaInset && 'pb-[calc(env(safe-area-inset-bottom))]',
+              isDragging && 'drag-over',
             )}
           >
+            <DropIndicator />
             <Bookshelf
               libraryBooks={libraryBooks}
               isSelectMode={isSelectMode}
@@ -420,7 +552,8 @@ const LibraryPage = () => {
             />
           </div>
         ) : (
-          <div className='hero h-screen items-center justify-center'>
+          <div className='hero drop-zone h-screen items-center justify-center'>
+            <DropIndicator />
             <div className='hero-content text-neutral-content text-center'>
               <div className='max-w-md'>
                 <h1 className='mb-5 text-5xl font-bold'>{_('Your Library')}</h1>
@@ -446,6 +579,20 @@ const LibraryPage = () => {
       <AboutWindow />
       <Toast />
     </div>
+  );
+};
+
+const LibraryPage = () => {
+  return (
+    <Suspense
+      fallback={
+        <div className='fixed inset-0 z-50 flex items-center justify-center'>
+          <Spinner loading />
+        </div>
+      }
+    >
+      <LibraryPageWithSearchParams />
+    </Suspense>
   );
 };
 

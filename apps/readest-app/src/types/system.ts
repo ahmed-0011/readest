@@ -5,19 +5,20 @@ import { ProgressHandler } from '@/utils/transfer';
 
 export type AppPlatform = 'web' | 'tauri';
 export type BaseDir = 'Books' | 'Settings' | 'Data' | 'Log' | 'Cache' | 'None';
-export type ToastType = 'info' | 'warning' | 'error';
 
 export interface FileSystem {
   getURL(path: string): string;
   getBlobURL(path: string, base: BaseDir): Promise<string>;
+  openFile(path: string, base: BaseDir, filename?: string): Promise<File>;
   copyFile(srcPath: string, dstPath: string, base: BaseDir): Promise<void>;
   readFile(path: string, base: BaseDir, mode: 'text' | 'binary'): Promise<string | ArrayBuffer>;
-  writeFile(path: string, base: BaseDir, content: string | ArrayBuffer): Promise<void>;
+  writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File): Promise<void>;
   removeFile(path: string, base: BaseDir): Promise<void>;
   readDir(path: string, base: BaseDir): Promise<{ path: string; isDir: boolean }[]>;
   createDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   removeDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   exists(path: string, base: BaseDir): Promise<boolean>;
+  getPrefix(base: BaseDir): string | null;
 }
 
 export interface AppService {
@@ -25,19 +26,20 @@ export interface AppService {
   osPlatform: string;
   appPlatform: AppPlatform;
   hasTrafficLight: boolean;
+  hasWindow: boolean;
   hasWindowBar: boolean;
   hasContextMenu: boolean;
   hasRoundedWindow: boolean;
   hasSafeAreaInset: boolean;
   hasHaptics: boolean;
+  hasSysFontsList: boolean;
   isMobile: boolean;
   isAppDataSandbox: boolean;
   isAndroidApp: boolean;
   isIOSApp: boolean;
 
+  selectDirectory(): Promise<string>;
   selectFiles(name: string, extensions: string[]): Promise<string[]>;
-  showMessage(msg: string, kind?: ToastType, title?: string, okLabel?: string): Promise<void>;
-
   loadSettings(): Promise<SystemSettings>;
   saveSettings(settings: SystemSettings): Promise<void>;
   importBook(
@@ -46,6 +48,7 @@ export interface AppService {
     saveBook?: boolean,
     saveCover?: boolean,
     overwrite?: boolean,
+    transient?: boolean,
   ): Promise<Book | null>;
   deleteBook(book: Book, includingUploaded?: boolean): Promise<void>;
   uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void>;

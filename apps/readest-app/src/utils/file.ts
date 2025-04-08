@@ -1,6 +1,7 @@
+import { FileHandle, open, BaseDirectory, SeekMode } from '@tauri-apps/plugin-fs';
 import { getOSPlatform } from './misc';
 
-class RemoteBlobSlice extends Blob {
+class DeferredBlob extends Blob {
   #dataPromise: Promise<ArrayBuffer>;
   #type: string;
 
@@ -49,7 +50,192 @@ class RemoteBlobSlice extends Blob {
   }
 }
 
-export class RemoteFile extends File {
+export interface ClosableFile extends File {
+  open(): Promise<this>;
+  close(): Promise<void>;
+}
+
+export class NativeFile extends File implements ClosableFile {
+  #handle: FileHandle | null = null;
+  #fp: string;
+  #name: string;
+  #baseDir: BaseDirectory | null;
+  #lastModified: number = 0;
+  #size: number = -1;
+  #type: string = '';
+
+  static MAX_CACHE_CHUNK_SIZE = 1024 * 1024;
+  static MAX_CACHE_ITEMS_SIZE = 20;
+  #cache: Map<number, ArrayBuffer> = new Map();
+  #order: number[] = [];
+
+  constructor(fp: string, name?: string, baseDir: BaseDirectory | null = null, type = '') {
+    super([], name || fp, { type });
+    this.#fp = fp;
+    this.#baseDir = baseDir;
+    this.#name = name || fp;
+  }
+
+  async open() {
+    this.#handle = await open(this.#fp, this.#baseDir ? { baseDir: this.#baseDir } : undefined);
+    const stats = await this.#handle.stat();
+    this.#size = stats.size;
+    this.#lastModified = stats.mtime ? stats.mtime.getTime() : Date.now();
+    return this;
+  }
+
+  async close() {
+    if (this.#handle) {
+      await this.#handle.close();
+      this.#handle = null;
+    }
+    this.#cache.clear();
+    this.#order = [];
+  }
+
+  override get name() {
+    return this.#name;
+  }
+
+  override get type() {
+    return this.#type;
+  }
+
+  override get size() {
+    return this.#size;
+  }
+
+  override get lastModified() {
+    return this.#lastModified;
+  }
+
+  async stat() {
+    return this.#handle?.stat();
+  }
+
+  async seek(offset: number, whence: SeekMode): Promise<number> {
+    if (!this.#handle) {
+      throw new Error('File handle is not open');
+    }
+    return this.#handle.seek(offset, whence);
+  }
+
+  // exclusive reading of the end: [start, end)
+  async readData(start: number, end: number): Promise<ArrayBuffer> {
+    if (!this.#handle) {
+      throw new Error('File handle is not open');
+    }
+    start = Math.max(0, start);
+    end = Math.max(start, Math.min(this.size, end));
+    const size = end - start;
+
+    if (size > NativeFile.MAX_CACHE_CHUNK_SIZE) {
+      await this.#handle.seek(start, SeekMode.Start);
+      const buffer = new Uint8Array(size);
+      await this.#handle.read(buffer);
+      return buffer.buffer;
+    }
+
+    const cachedChunkStart = Array.from(this.#cache.keys()).find((chunkStart) => {
+      const buffer = this.#cache.get(chunkStart)!;
+      return start >= chunkStart && end <= chunkStart + buffer.byteLength;
+    });
+
+    if (cachedChunkStart !== undefined) {
+      this.#updateAccessOrder(cachedChunkStart);
+      const buffer = this.#cache.get(cachedChunkStart)!;
+      const offset = start - cachedChunkStart;
+      return buffer.slice(offset, offset + size);
+    }
+
+    const chunkStart = Math.max(0, start - 1024);
+    const chunkEnd = Math.min(this.size, chunkStart + NativeFile.MAX_CACHE_CHUNK_SIZE);
+    const chunkSize = chunkEnd - chunkStart;
+
+    await this.#handle.seek(chunkStart, SeekMode.Start);
+    const buffer = new Uint8Array(chunkSize);
+    await this.#handle.read(buffer);
+
+    this.#cache.set(chunkStart, buffer.buffer);
+    this.#updateAccessOrder(chunkStart);
+    this.#ensureCacheSize();
+
+    const offset = start - chunkStart;
+    return buffer.buffer.slice(offset, offset + size);
+  }
+
+  #updateAccessOrder(chunkStart: number) {
+    const index = this.#order.indexOf(chunkStart);
+    if (index > -1) {
+      this.#order.splice(index, 1);
+    }
+    this.#order.unshift(chunkStart);
+  }
+
+  #ensureCacheSize() {
+    while (this.#cache.size > NativeFile.MAX_CACHE_ITEMS_SIZE) {
+      const oldestKey = this.#order.pop();
+      if (oldestKey !== undefined) {
+        this.#cache.delete(oldestKey);
+      }
+    }
+  }
+
+  override slice(start = 0, end = this.size, contentType = this.type): Blob {
+    // console.log(`Slicing: ${start}-${end}, size: ${end - start}`);
+    const dataPromise = this.readData(start, end);
+    return new DeferredBlob(dataPromise, contentType);
+  }
+
+  override stream(): ReadableStream<Uint8Array> {
+    const CHUNK_SIZE = 1024 * 1024;
+    let offset = 0;
+
+    return new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        if (!this.#handle) {
+          controller.error(new Error('File handle is not open'));
+          return;
+        }
+
+        if (offset >= this.size) {
+          controller.close();
+          return;
+        }
+
+        const end = Math.min(offset + CHUNK_SIZE, this.size);
+        const buffer = new Uint8Array(end - offset);
+
+        await this.#handle.seek(offset, SeekMode.Start);
+        const bytesRead = await this.#handle.read(buffer);
+
+        if (bytesRead === null || bytesRead === 0) {
+          controller.close();
+          return;
+        }
+
+        controller.enqueue(buffer.subarray(0, bytesRead));
+        offset += bytesRead;
+      },
+
+      cancel: async () => {
+        await this.#handle?.close();
+      },
+    });
+  }
+
+  override async text() {
+    const blob = this.slice(0, this.size);
+    return blob.text();
+  }
+
+  override async arrayBuffer() {
+    const blob = this.slice(0, this.size);
+    return blob.arrayBuffer();
+  }
+}
+
+export class RemoteFile extends File implements ClosableFile {
   url: string;
   #name: string;
   #lastModified: number;
@@ -61,10 +247,11 @@ export class RemoteFile extends File {
   static MAX_CACHE_CHUNK_SIZE = 1024 * 128;
   static MAX_CACHE_ITEMS_SIZE: number = 10;
 
-  constructor(url: string, name = 'remote-file', type = '', lastModified = Date.now()) {
-    super([], name, { type: type, lastModified });
+  constructor(url: string, name?: string, type = '', lastModified = Date.now()) {
+    const basename = url.split('/').pop() || 'remote-file';
+    super([], name || basename, { type, lastModified });
     this.url = url;
-    this.#name = name;
+    this.#name = name || basename;
     this.#type = type;
     this.#lastModified = lastModified;
   }
@@ -114,6 +301,11 @@ export class RemoteFile extends File {
     }
   }
 
+  async close(): Promise<void> {
+    this.#cache.clear();
+    this.#order = [];
+  }
+
   async fetchRangePart(start: number, end: number) {
     start = Math.max(0, start);
     end = Math.min(this.size - 1, end);
@@ -125,6 +317,7 @@ export class RemoteFile extends File {
     return response.arrayBuffer();
   }
 
+  // inclusive reading of the end: [start, end]
   async fetchRange(start: number, end: number): Promise<ArrayBuffer> {
     const rangeSize = end - start + 1;
     const MAX_RANGE_LEN = 1024 * 1000;
@@ -194,7 +387,7 @@ export class RemoteFile extends File {
     // console.log(`Slicing: ${start}-${end}, size: ${end - start}`);
     const dataPromise = this.fetchRange(start, end - 1);
 
-    return new RemoteBlobSlice(dataPromise, contentType);
+    return new DeferredBlob(dataPromise, contentType);
   }
 
   override async text() {

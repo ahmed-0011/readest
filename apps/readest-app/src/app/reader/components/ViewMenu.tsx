@@ -5,17 +5,17 @@ import { BiMoon, BiSun } from 'react-icons/bi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdZoomOut, MdZoomIn, MdCheck } from 'react-icons/md';
 
-import {
-  MAX_ZOOM_LEVEL,
-  MIN_ZOOM_LEVEL,
-  ONE_COLUMN_MAX_INLINE_SIZE,
-  ZOOM_STEP,
-} from '@/services/constants';
-import MenuItem from '@/components/MenuItem';
+import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants';
+import { useEnv } from '@/context/EnvContext';
+import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useTheme, ThemeMode } from '@/hooks/useTheme';
+import { ThemeMode } from '@/styles/themes';
 import { getStyles } from '@/utils/style';
+import { getMaxInlineSize } from '@/utils/config';
+import { tauriHandleToggleFullScreen } from '@/utils/window';
+import { saveViewSettings } from '../utils/viewSettingsHelper';
+import MenuItem from '@/components/MenuItem';
 
 interface ViewMenuProps {
   bookKey: string;
@@ -29,19 +29,18 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
   onSetSettingsDialogOpen,
 }) => {
   const _ = useTranslation();
-  const { getView, getViews, getViewSettings, setViewSettings } = useReaderStore();
+  const { envConfig, appService } = useEnv();
+  const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey)!;
 
-  const { themeMode, isDarkMode, themeCode, updateThemeMode } = useTheme();
+  const { themeMode, setThemeMode } = useThemeStore();
   const [isScrolledMode, setScrolledMode] = useState(viewSettings!.scrolled);
-  const [isInvertedColors, setInvertedColors] = useState(viewSettings!.invert);
   const [zoomLevel, setZoomLevel] = useState(viewSettings!.zoomLevel!);
 
   const zoomIn = () => setZoomLevel((prev) => Math.min(prev + ZOOM_STEP, MAX_ZOOM_LEVEL));
   const zoomOut = () => setZoomLevel((prev) => Math.max(prev - ZOOM_STEP, MIN_ZOOM_LEVEL));
   const resetZoom = () => setZoomLevel(100);
   const toggleScrolledMode = () => setScrolledMode(!isScrolledMode);
-  const toggleInvertedColors = () => setInvertedColors(!isInvertedColors);
 
   const openFontLayoutMenu = () => {
     setIsDropdownOpen?.(false);
@@ -51,40 +50,29 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
   const cycleThemeMode = () => {
     const nextMode: ThemeMode =
       themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
-    updateThemeMode(nextMode);
+    setThemeMode(nextMode);
+  };
+
+  const handleFullScreen = () => {
+    tauriHandleToggleFullScreen();
+    setIsDropdownOpen?.(false);
   };
 
   useEffect(() => {
-    getViews().forEach((view) => {
-      view.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeCode]);
-
-  useEffect(() => {
+    if (isScrolledMode === viewSettings!.scrolled) return;
+    viewSettings!.scrolled = isScrolledMode;
     getView(bookKey)?.renderer.setAttribute('flow', isScrolledMode ? 'scrolled' : 'paginated');
     getView(bookKey)?.renderer.setAttribute(
       'max-inline-size',
-      `${viewSettings.maxColumnCount === 1 || isScrolledMode ? ONE_COLUMN_MAX_INLINE_SIZE : viewSettings.maxInlineSize}px`,
+      `${getMaxInlineSize(viewSettings)}px`,
     );
-    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
-    viewSettings!.scrolled = isScrolledMode;
+    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings!));
     setViewSettings(bookKey, viewSettings!);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScrolledMode]);
 
   useEffect(() => {
-    document.body.classList.toggle('invert', isInvertedColors);
-    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInvertedColors]);
-
-  useEffect(() => {
-    const view = getView(bookKey);
-    if (!view) return;
-    viewSettings!.zoomLevel = zoomLevel;
-    setViewSettings(bookKey, viewSettings!);
-    view.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
+    saveViewSettings(envConfig, bookKey, 'zoomLevel', zoomLevel, true, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomLevel]);
 
@@ -135,6 +123,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
 
       <hr className='border-base-300 my-1' />
 
+      {appService?.hasWindow && <MenuItem label={_('Fullscreen')} onClick={handleFullScreen} />}
       <MenuItem
         label={
           themeMode === 'dark'
@@ -145,12 +134,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({
         }
         icon={themeMode === 'dark' ? <BiMoon /> : themeMode === 'light' ? <BiSun /> : <TbSunMoon />}
         onClick={cycleThemeMode}
-      />
-      <MenuItem
-        label={_('Invert Colors in Dark Mode')}
-        icon={isInvertedColors ? <MdCheck className='text-base-content' /> : undefined}
-        onClick={toggleInvertedColors}
-        disabled={!isDarkMode}
       />
     </div>
   );

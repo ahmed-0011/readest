@@ -12,7 +12,7 @@ import { FaHeadphones } from 'react-icons/fa6';
 import * as CFI from 'foliate-js/epubcfi.js';
 import { Overlayer } from 'foliate-js/overlayer.js';
 import { useEnv } from '@/context/EnvContext';
-import { BookNote, HighlightColor, HighlightStyle } from '@/types/book';
+import { BookNote, BooknoteGroup, HighlightColor, HighlightStyle } from '@/types/book';
 import { getOSPlatform, uniqueId } from '@/utils/misc';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -24,6 +24,8 @@ import { useFoliateEvents } from '../../hooks/useFoliateEvents';
 import { useNotesSync } from '../../hooks/useNotesSync';
 import { getPopupPosition, getPosition, Position, TextSelection } from '@/utils/sel';
 import { eventDispatcher } from '@/utils/event';
+import { findTocItemBS } from '@/utils/toc';
+import { HIGHLIGHT_COLOR_HEX } from '@/services/constants';
 import AnnotationPopup from './AnnotationPopup';
 import WiktionaryPopup from './WiktionaryPopup';
 import WikipediaPopup from './WikipediaPopup';
@@ -75,9 +77,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const dictPopupHeight = Math.min(300, maxHeight);
   const transPopupWidth = Math.min(480, maxWidth);
   const transPopupHeight = Math.min(360, maxHeight);
-  const annotPopupWidth = useResponsiveSize(280);
+  const annotPopupWidth = Math.min(useResponsiveSize(300), maxWidth);
   const annotPopupHeight = useResponsiveSize(44);
-  const androidSelectionHandlerHeight = 8;
+  const androidSelectionHandlerHeight = 0;
 
   const onLoad = (event: Event) => {
     const detail = (event as CustomEvent).detail;
@@ -95,11 +97,26 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       }
       setSelection({ key: bookKey, text: sel.toString(), range, index });
     };
+    // FIXME: extremely hacky way to dismiss system selection tools on iOS
+    const makeSelectionOnIOS = (sel: Selection) => {
+      isTextSelected.current = true;
+      const range = sel.getRangeAt(0);
+      setTimeout(() => {
+        sel.removeAllRanges();
+        setTimeout(() => {
+          if (!isTextSelected.current) return;
+          sel.addRange(range);
+          setSelection({ key: bookKey, text: range.toString(), range, index });
+        }, 40);
+      }, 0);
+    };
     const handleSelectionchange = () => {
       // Available on iOS, Android and Desktop, fired when the selection is changed
       // Ideally the popup only shows when the selection is done,
       // but on Android no proper events are fired to notify selection done or I didn't find it,
       // we make the popup show when the selection is changed
+      if (osPlatform === 'ios' || appService?.isIOSApp) return;
+
       const sel = doc.getSelection();
       if (isValidSelection(sel)) {
         if (osPlatform === 'android' && isTouchstarted.current) {
@@ -118,7 +135,11 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       // Note that on Android, pointerup event is fired after an additional touch event
       const sel = doc.getSelection();
       if (isValidSelection(sel)) {
-        makeSelection(sel, true);
+        if (osPlatform === 'ios' || appService?.isIOSApp) {
+          makeSelectionOnIOS(sel);
+        } else {
+          makeSelection(sel, true);
+        }
       }
     };
     const handleTouchstart = () => {
@@ -157,14 +178,15 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     const detail = (event as CustomEvent).detail;
     const { draw, annotation, doc, range } = detail;
     const { style, color } = annotation as BookNote;
+    const hexColor = color ? HIGHLIGHT_COLOR_HEX[color] : color;
     if (style === 'highlight') {
-      draw(Overlayer.highlight, { color });
+      draw(Overlayer.highlight, { color: hexColor });
     } else if (['underline', 'squiggly'].includes(style as string)) {
       const { defaultView } = doc;
       const node = range.startContainer;
       const el = node.nodeType === 1 ? node : node.parentElement;
       const { writingMode } = defaultView.getComputedStyle(el);
-      draw(Overlayer[style as keyof typeof Overlayer], { writingMode, color });
+      draw(Overlayer[style as keyof typeof Overlayer], { writingMode, color: hexColor });
     }
   };
 
@@ -219,8 +241,10 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     };
 
     eventDispatcher.onSync('iframe-single-click', handleSingleClick);
+    eventDispatcher.on('export-annotations', handleExportMarkdown);
     return () => {
       eventDispatcher.offSync('iframe-single-click', handleSingleClick);
+      eventDispatcher.off('export-annotations', handleExportMarkdown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -231,12 +255,12 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
       if (!gridFrame) return;
       const rect = gridFrame.getBoundingClientRect();
-      const triangPos = getPosition(selection.range, rect, viewSettings.vertical);
+      const triangPos = getPosition(selection.range, rect, popupPadding, viewSettings.vertical);
       const annotPopupPos = getPopupPosition(
         triangPos,
         rect,
-        annotPopupWidth,
-        annotPopupHeight,
+        viewSettings.vertical ? annotPopupHeight : annotPopupWidth,
+        viewSettings.vertical ? annotPopupWidth : annotPopupHeight,
         popupPadding,
       );
       if (isTextSelected.current && annotPopupPos.dir === 'down' && osPlatform === 'android') {
@@ -327,7 +351,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       saveConfig(envConfig, bookKey, updatedConfig, settings);
     }
     handleDismissPopupAndSelection();
-    setNotebookVisible(true);
+    if (!appService?.isMobile) {
+      setNotebookVisible(true);
+    }
   };
 
   const handleHighlight = (update = false) => {
@@ -380,11 +406,10 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     if (!selection || !selection.text) return;
     const { sectionHref: href } = progress;
     selection.href = href;
-    setShowAnnotPopup(false);
-    setHighlightOptionsVisible(false);
+    handleHighlight(true);
     setNotebookVisible(true);
     setNotebookNewAnnotation(selection);
-    handleHighlight(true);
+    handleDismissPopup();
   };
 
   const handleSearch = () => {
@@ -415,6 +440,91 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     if (!selection || !selection.text) return;
     setShowAnnotPopup(false);
     eventDispatcher.dispatch('tts-speak', { bookKey, range: selection.range });
+  };
+
+  const handleExportMarkdown = (event: CustomEvent) => {
+    const { bookKey: exportBookKey } = event.detail;
+    if (bookKey !== exportBookKey) return;
+
+    const { bookDoc, book } = bookData;
+    if (!bookDoc || !book || !bookDoc.toc) return;
+
+    const config = getConfig(bookKey)!;
+    const { booknotes: allNotes = [] } = config;
+    const booknotes = allNotes.filter((note) => !note.deletedAt);
+    if (booknotes.length === 0) {
+      eventDispatcher.dispatch('toast', {
+        type: 'info',
+        message: _('No annotations to export'),
+        className: 'whitespace-nowrap',
+        timeout: 2000,
+      });
+      return;
+    }
+    const booknoteGroups: { [href: string]: BooknoteGroup } = {};
+    for (const booknote of booknotes) {
+      const tocItem = findTocItemBS(bookDoc.toc ?? [], booknote.cfi);
+      const href = tocItem?.href || '';
+      const label = tocItem?.label || '';
+      const id = tocItem?.id || 0;
+      if (!booknoteGroups[href]) {
+        booknoteGroups[href] = { id, href, label, booknotes: [] };
+      }
+      booknoteGroups[href].booknotes.push(booknote);
+    }
+
+    Object.values(booknoteGroups).forEach((group) => {
+      group.booknotes.sort((a, b) => {
+        return CFI.compare(a.cfi, b.cfi);
+      });
+    });
+
+    const sortedGroups = Object.values(booknoteGroups).sort((a, b) => {
+      return a.id - b.id;
+    });
+
+    const lines: string[] = [];
+    lines.push(`# ${book.title}`);
+    lines.push(`**${_('Author')}**: ${book.author || ''}`);
+    lines.push('');
+    lines.push(`**${_('Exported from Readest')}**: ${new Date().toISOString().slice(0, 10)}`);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(`## ${_('Highlights & Annotations')}`);
+    lines.push('');
+
+    for (const group of sortedGroups) {
+      const chapterTitle = group.label || _('Untitled');
+      lines.push(`### ${chapterTitle}`);
+      for (const note of group.booknotes) {
+        lines.push(`> "${note.text}"`);
+        if (note.note) {
+          lines.push(`**${_('Note')}**:: ${note.note}`);
+        }
+        lines.push('');
+      }
+      lines.push('---');
+      lines.push('');
+    }
+
+    const markdownContent = lines.join('\n');
+
+    navigator.clipboard?.writeText(markdownContent);
+    eventDispatcher.dispatch('toast', {
+      type: 'info',
+      message: _('Copied to clipboard'),
+      className: 'whitespace-nowrap',
+      timeout: 2000,
+    });
+    if (appService?.isMobile) return;
+    const blob = new Blob([markdownContent], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${book.title.replace(/\s+/g, '_')}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const selectionAnnotated = selection?.annotated;
@@ -466,6 +576,8 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       )}
       {showAnnotPopup && trianglePosition && annotPopupPosition && (
         <AnnotationPopup
+          dir={viewSettings.rtl ? 'rtl' : 'ltr'}
+          isVertical={viewSettings.vertical}
           buttons={buttons}
           position={annotPopupPosition}
           trianglePosition={trianglePosition}

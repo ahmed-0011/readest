@@ -1,26 +1,47 @@
 import clsx from 'clsx';
 import React from 'react';
 
-import { useSidebarStore } from '@/store/sidebarStore';
-import useTrafficLight from '@/hooks/useTrafficLight';
-
 interface SectionInfoProps {
   section?: string;
-  gapLeft: string;
+  showDoubleBorder: boolean;
+  isScrolled: boolean;
+  isVertical: boolean;
+  horizontalGap: number;
+  verticalMargin: number;
 }
 
-const SectionInfo: React.FC<SectionInfoProps> = ({ section, gapLeft }) => {
-  const { isSideBarVisible } = useSidebarStore();
-  const { isTrafficLightVisible } = useTrafficLight();
+const SectionInfo: React.FC<SectionInfoProps> = ({
+  section,
+  showDoubleBorder,
+  isScrolled,
+  isVertical,
+  horizontalGap,
+  verticalMargin,
+}) => {
   return (
     <div
       className={clsx(
-        'pageinfo absolute right-0 top-0 flex max-w-[50%] items-end',
-        isTrafficLightVisible && !isSideBarVisible ? 'h-[44px]' : 'h-[30px]',
+        'sectioninfo absolute flex items-center overflow-hidden',
+        isVertical ? 'writing-vertical-rl max-h-[85%]' : 'top-0 h-[44px]',
+        isScrolled && !isVertical && 'bg-base-100',
       )}
-      style={{ left: gapLeft }}
+      style={
+        isVertical
+          ? {
+              top: `${verticalMargin * 1.5}px`,
+              left: `calc(100% - ${horizontalGap}%)`,
+              width: showDoubleBorder ? '32px' : `${horizontalGap}%`,
+              height: `calc(100% - ${verticalMargin * 2}px)`,
+            }
+          : { insetInlineStart: `${horizontalGap}%`, width: `calc(100% - ${horizontalGap * 2}%)` }
+      }
     >
-      <h2 className='text-neutral-content line-clamp-1 text-center font-sans text-xs font-light'>
+      <h2
+        className={clsx(
+          'text-neutral-content text-center font-sans text-xs font-light',
+          isVertical ? '' : 'line-clamp-1',
+        )}
+      >
         {section || ''}
       </h2>
     </div>

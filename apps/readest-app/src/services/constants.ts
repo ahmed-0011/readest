@@ -3,17 +3,30 @@ import {
   BookLayout,
   BookSearchConfig,
   BookStyle,
+  HighlightColor,
   TTSConfig,
   ViewConfig,
   ViewSettings,
 } from '@/types/book';
 import { ReadSettings, SystemSettings } from '@/types/settings';
 import { UserStorageQuota } from '@/types/user';
+import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
+import { stubTranslation as _ } from '@/utils/misc';
 
 export const LOCAL_BOOKS_SUBDIR = 'Readest/Books';
 export const CLOUD_BOOKS_SUBDIR = 'Readest/Books';
 
-export const SUPPORTED_FILE_EXTS = ['epub', 'mobi', 'azw', 'azw3', 'fb2', 'zip', 'cbz', 'pdf'];
+export const SUPPORTED_FILE_EXTS = [
+  'epub',
+  'mobi',
+  'azw',
+  'azw3',
+  'fb2',
+  'zip',
+  'cbz',
+  'pdf',
+  'txt',
+];
 export const FILE_ACCEPT_FORMATS = SUPPORTED_FILE_EXTS.map((ext) => `.${ext}`).join(', ');
 export const BOOK_UNGROUPED_NAME = '';
 export const BOOK_UNGROUPED_ID = '';
@@ -21,8 +34,10 @@ export const BOOK_UNGROUPED_ID = '';
 export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   keepLogin: false,
   autoUpload: true,
+  alwaysOnTop: false,
   autoCheckUpdates: true,
   screenWakeLock: true,
+  autoImportBooksOnOpen: false,
 
   lastSyncedAtBooks: 0,
   lastSyncedAtConfigs: 0,
@@ -37,6 +52,7 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
   autohideCursor: true,
   translateTargetLang: 'EN',
 
+  customThemes: [],
   highlightStyle: 'highlight',
   highlightStyles: {
     highlight: 'yellow',
@@ -50,6 +66,7 @@ export const DEFAULT_BOOK_FONT: BookFont = {
   sansSerifFont: 'Roboto',
   monospaceFont: 'Consolas',
   defaultFont: 'Serif',
+  defaultCJKFont: 'LXGW WenKai GB Screen',
   defaultFontSize: 16,
   minimumFontSize: 8,
   fontWeight: 400,
@@ -60,12 +77,19 @@ export const DEFAULT_BOOK_LAYOUT: BookLayout = {
   gapPercent: 5,
   scrolled: false,
   disableClick: false,
+  swapClickArea: false,
+  continuousScroll: false,
   maxColumnCount: 2,
-  maxInlineSize: 720,
-  maxBlockSize: 1440,
+  maxInlineSize: getDefaultMaxInlineSize(),
+  maxBlockSize: getDefaultMaxBlockSize(),
   animated: false,
   writingMode: 'auto',
   vertical: false,
+  rtl: false,
+  doubleBorder: false,
+  borderColor: 'red',
+  showHeader: true,
+  showFooter: true,
 };
 
 export const DEFAULT_BOOK_STYLE: BookStyle = {
@@ -80,13 +104,14 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
   invert: false,
   theme: 'light',
   overrideFont: false,
-  overrideLayout: false,
+  overrideLayout: true,
   userStylesheet: '',
 };
 
 export const DEFAULT_MOBILE_VIEW_SETTINGS: Partial<ViewSettings> = {
   fullJustification: false,
   animated: true,
+  defaultFont: 'Sans-serif',
 };
 
 export const DEFAULT_CJK_VIEW_SETTINGS: Partial<ViewSettings> = {
@@ -96,10 +121,11 @@ export const DEFAULT_CJK_VIEW_SETTINGS: Partial<ViewSettings> = {
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   sideBarTab: 'toc',
+  uiLanguage: '',
 };
 
 export const DEFAULT_TTS_CONFIG: TTSConfig = {
-  ttsRate: 1.0,
+  ttsRate: 1.3,
   ttsVoice: '',
 };
 
@@ -119,6 +145,7 @@ export const SERIF_FONTS = [
   'Vollkorn',
   'Georgia',
   'Times New Roman',
+  _('LXGW WenKai GB Screen'),
 ];
 
 export const SANS_SERIF_FONTS = ['Roboto', 'Noto Sans', 'Open Sans', 'Helvetica', 'Arial'];
@@ -155,6 +182,7 @@ export const WINDOWS_FONTS = [
   'Leelawadee UI',
   'Lucida Console',
   'Lucida Sans Unicode',
+  'LXGW WenKai GB Screen',
   'Malgun Gothic',
   'Marlett',
   'Microsoft Himalaya',
@@ -249,6 +277,7 @@ export const MACOS_FONTS = [
   'Kozuka Mincho Pro',
   'Lucida Grande',
   'Luminari',
+  'LXGW WenKai GB Screen',
   'Marker Felt',
   'Menlo',
   'Microsoft Sans Serif',
@@ -305,6 +334,7 @@ export const LINUX_FONTS = [
   'Liberation Mono',
   'Liberation Sans',
   'Liberation Serif',
+  'LXGW WenKai GB Screen',
   'Noto Mono',
   'Noto Sans',
   'Noto Sans JP',
@@ -341,6 +371,7 @@ export const IOS_FONTS = [
   'Hiragino Mincho',
   'Hiragino Sans',
   'Kaiti',
+  'LXGW WenKai GB Screen',
   'Palatino',
   'PingFang SC',
   'PingFang TC',
@@ -363,6 +394,7 @@ export const ANDROID_FONTS = [
   'Georgia',
   'Heiti',
   'Kaiti',
+  'LXGW WenKai GB Screen',
   'Noto Sans',
   'Noto Sans CJK',
   'Noto Sans JP',
@@ -380,7 +412,46 @@ export const ANDROID_FONTS = [
   'XiHeiti',
 ];
 
-export const ONE_COLUMN_MAX_INLINE_SIZE = 9999;
+export const CJK_NAMES_PATTENS = /[\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]/;
+export const CJK_FONTS_PATTENS = new RegExp(
+  [
+    'CJK',
+    'TC$',
+    'SC$',
+    'HK',
+    'JP',
+    'TW',
+    'Sim',
+    'Kai',
+    'Hei',
+    'Yan',
+    'Min',
+    'Yuan',
+    'Song',
+    'Ming',
+    'FZ',
+    'FangZheng',
+    'WenQuanYi',
+    'PingFang',
+    'Hiragino',
+    'Meiryo',
+    'Source\\s?Han',
+    'Yu\\s?Gothic',
+    'Yu\\s?Mincho',
+    'Mincho',
+    'Gothic',
+    'Nanum',
+    'Malgun',
+    'Gulim',
+    'Dotum',
+    'Batang',
+    'Gungsuh',
+    'OPPO sans',
+    'MiSans',
+    'Fallback',
+  ].join('|'),
+  'i',
+);
 
 export const BOOK_IDS_SEPARATOR = '+';
 
@@ -406,3 +477,87 @@ export const DEFAULT_STORAGE_QUOTA: UserStorageQuota = {
 export const DOUBLE_CLICK_INTERVAL_THRESHOLD_MS = 250;
 export const DISABLE_DOUBLE_CLICK_ON_MOBILE = true;
 export const LONG_HOLD_THRESHOLD = 500;
+
+export const HIGHLIGHT_COLOR_HEX: Record<HighlightColor, string> = {
+  red: '#f87171', // red-400
+  yellow: '#facc15', // yellow-400
+  green: '#4ade80', // green-400
+  blue: '#60a5fa', // blue-400
+  violet: '#a78bfa', // violet-400
+};
+
+export const CUSTOM_THEME_TEMPLATES = [
+  {
+    light: {
+      fg: '#2b2b2b',
+      bg: '#f3f3f3',
+      primary: '#3c5a72',
+    },
+    dark: {
+      fg: '#d0d0d0',
+      bg: '#1a1c1f',
+      primary: '#486e8a',
+    },
+  },
+  {
+    light: {
+      fg: '#3f2f3c',
+      bg: '#f5ecf8',
+      primary: '#7b5291',
+    },
+    dark: {
+      fg: '#d6cadd',
+      bg: '#3a2c3d',
+      primary: '#bda0cc',
+    },
+  },
+  {
+    light: {
+      fg: '#2b2b2b',
+      bg: '#defcd9',
+      primary: '#00796b',
+    },
+    dark: {
+      fg: '#c8e6c9',
+      bg: '#273c33',
+      primary: '#26a69a',
+    },
+  },
+];
+
+export const MIGHT_BE_RTL_LANGS = [
+  'zh',
+  'ja',
+  'ko',
+  'ar',
+  'he',
+  'fa',
+  'ur',
+  'dv',
+  'ps',
+  'sd',
+  'yi',
+  '',
+];
+
+export const TRANSLATED_LANGS = {
+  en: 'English',
+  fr: 'Français',
+  de: 'Deutsch',
+  it: 'Italiano',
+  ja: '日本語',
+  ko: '한국어',
+  es: 'Español',
+  pt: 'Português',
+  ru: 'Русский',
+  ar: 'العربية',
+  el: 'Ελληνικά',
+  uk: 'Українська',
+  pl: 'Polski',
+  tr: 'Türkçe',
+  hi: 'हिन्दी',
+  id: 'Bahasa Indonesia',
+  vi: 'Tiếng Việt',
+  'zh-CN': '简体中文',
+  'zh-TW': '正體中文',
+};

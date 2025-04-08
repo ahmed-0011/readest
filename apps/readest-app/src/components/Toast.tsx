@@ -50,7 +50,7 @@ export const Toast = () => {
     toastMessage && (
       <div
         className={clsx(
-          'toast toast-center toast-middle w-auto max-w-screen-sm',
+          'toast toast-center toast-middle z-50 w-auto max-w-screen-sm',
           toastClassMap[toastType.current],
           toastClassMap[toastType.current].includes('toast-top') &&
             'pt-[calc(44px+env(safe-area-inset-top))]',
@@ -64,12 +64,17 @@ export const Toast = () => {
         >
           <span
             className={clsx(
-              'max-h-[50vh] min-w-[30vw] max-w-80',
-              'overflow-scroll whitespace-normal break-words text-center',
+              'max-h-[50vh] min-w-32 max-w-80',
+              'overflow-y-auto whitespace-normal break-words text-center',
               messageClass.current,
             )}
           >
-            {toastMessage}
+            {toastMessage.split('\n').map((line, idx) => (
+              <React.Fragment key={idx}>
+                {line || <>&nbsp;</>}
+                <br />
+              </React.Fragment>
+            ))}
           </span>
         </div>
       </div>

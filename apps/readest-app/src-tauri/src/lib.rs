@@ -10,6 +10,8 @@ extern crate objc;
 mod menu;
 #[cfg(target_os = "macos")]
 mod traffic_light;
+#[cfg(target_os = "macos")]
+use traffic_light::set_traffic_lights;
 
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -45,6 +47,31 @@ fn allow_file_in_scopes(app: &AppHandle, files: Vec<PathBuf>) {
 }
 
 #[cfg(desktop)]
+fn get_files_from_argv(argv: Vec<String>) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    // NOTICE: `args` may include URL protocol (`your-app-protocol://`)
+    // or arguments (`--`) if your app supports them.
+    // files may also be passed as `file://path/to/file`
+    for (_, maybe_file) in argv.iter().enumerate().skip(1) {
+        // skip flags like -f or --flag
+        if maybe_file.starts_with("-") {
+            continue;
+        }
+        // handle `file://` path urls and skip other urls
+        if let Ok(url) = Url::parse(maybe_file) {
+            if let Ok(path) = url.to_file_path() {
+                files.push(path);
+            } else {
+                files.push(PathBuf::from(maybe_file))
+            }
+        } else {
+            files.push(PathBuf::from(maybe_file))
+        }
+    }
+    files
+}
+
+#[cfg(desktop)]
 fn set_window_open_with_files(app: &AppHandle, files: Vec<PathBuf>) {
     let files = files
         .into_iter()
@@ -58,6 +85,15 @@ fn set_window_open_with_files(app: &AppHandle, files: Vec<PathBuf>) {
     let script = format!("window.OPEN_WITH_FILES = [{}];", files);
     if let Err(e) = window.eval(&script) {
         eprintln!("Failed to set open files variable: {}", e);
+    }
+}
+
+#[cfg(desktop)]
+fn set_rounded_window(app: &AppHandle, rounded: bool) {
+    let window = app.get_webview_window("main").unwrap();
+    let script = format!("window.IS_ROUNDED = {};", rounded);
+    if let Err(e) = window.eval(&script) {
+        eprintln!("Failed to set IS_ROUNDED variable: {}", e);
     }
 }
 
@@ -98,6 +134,8 @@ pub fn run() {
             start_server,
             download_file,
             upload_file,
+            #[cfg(target_os = "macos")]
+            set_traffic_lights,
             #[cfg(desktop)]
             list_fonts
         ])
@@ -106,6 +144,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_native_bridge::init())
         .plugin(tauri_plugin_fs::init());
 
     #[cfg(desktop)]
@@ -114,6 +153,10 @@ pub fn run() {
             .get_webview_window("main")
             .expect("no main window")
             .set_focus();
+        let files = get_files_from_argv(argv.clone());
+        if !files.is_empty() {
+            allow_file_in_scopes(app, files.clone());
+        }
         app.emit("single-instance", Payload { args: argv, cwd })
             .unwrap();
     }));
@@ -132,9 +175,6 @@ pub fn run() {
     #[cfg(target_os = "ios")]
     let builder = builder.plugin(tauri_plugin_sign_in_with_apple::init());
 
-    #[cfg(target_os = "ios")]
-    let builder = builder.plugin(tauri_plugin_safari_auth::init());
-
     #[cfg(any(target_os = "ios", target_os = "android"))]
     let builder = builder.plugin(tauri_plugin_haptics::init());
 
@@ -142,26 +182,7 @@ pub fn run() {
         .setup(|#[allow(unused_variables)] app| {
             #[cfg(desktop)]
             {
-                let mut files = Vec::new();
-                // NOTICE: `args` may include URL protocol (`your-app-protocol://`)
-                // or arguments (`--`) if your app supports them.
-                // files may also be passed as `file://path/to/file`
-                for maybe_file in std::env::args().skip(1) {
-                    // skip flags like -f or --flag
-                    if maybe_file.starts_with("-") {
-                        continue;
-                    }
-                    // handle `file://` path urls and skip other urls
-                    if let Ok(url) = Url::parse(&maybe_file) {
-                        if let Ok(path) = url.to_file_path() {
-                            files.push(path);
-                        } else {
-                            files.push(PathBuf::from(maybe_file))
-                        }
-                    } else {
-                        files.push(PathBuf::from(maybe_file))
-                    }
-                }
+                let files = get_files_from_argv(std::env::args().collect());
                 if !files.is_empty() {
                     let app_handle = app.handle().clone();
                     allow_file_in_scopes(&app_handle, files.clone());
@@ -181,6 +202,12 @@ pub fn run() {
                     app_handle.get_webview_window("main").unwrap()
                         .eval("window.__READEST_CLI_ACCESS = true; window.__READEST_UPDATER_ACCESS = true;")
                         .expect("Failed to set cli access config");
+
+                    set_rounded_window(&app_handle, true);
+                    #[cfg(target_os = "windows")]
+                    if tauri_plugin_os::version() <= tauri_plugin_os::Version::from_string("10.0.19045") {
+                        set_rounded_window(&app_handle, false);
+                    }
                 });
             }
 
@@ -190,14 +217,11 @@ pub fn run() {
                 app.deep_link().register_all()?;
             }
 
-            #[cfg(desktop)]
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .build(),
+            )?;
 
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
 
@@ -221,8 +245,7 @@ pub fn run() {
                     .title("Readest");
 
                 if cfg!(target_os = "windows") {
-                    let version = tauri_plugin_os::version();
-                    if version <= tauri_plugin_os::Version::from_string("10.0.19045") {
+                    if tauri_plugin_os::version() <= tauri_plugin_os::Version::from_string("10.0.19045") {
                         win_builder = win_builder.shadow(false);
                     } else {
                         win_builder = win_builder.shadow(true);

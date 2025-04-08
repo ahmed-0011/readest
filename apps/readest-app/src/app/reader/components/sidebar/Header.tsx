@@ -5,8 +5,8 @@ import { FiSearch } from 'react-icons/fi';
 import { MdOutlineMenu, MdOutlinePushPin, MdPushPin } from 'react-icons/md';
 import { MdArrowBackIosNew } from 'react-icons/md';
 
-import useTrafficLight from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
+import { useTrafficLightStore } from '@/store/trafficLightStore';
 import Dropdown from '@/components/Dropdown';
 import BookMenu from './BookMenu';
 
@@ -18,16 +18,18 @@ const SidebarHeader: React.FC<{
   onTogglePin: () => void;
   onToggleSearchBar: () => void;
 }> = ({ isPinned, isSearchBarVisible, onGoToLibrary, onClose, onTogglePin, onToggleSearchBar }) => {
-  const { isTrafficLightVisible } = useTrafficLight();
+  const { isTrafficLightVisible } = useTrafficLightStore();
   const iconSize14 = useResponsiveSize(14);
   const iconSize18 = useResponsiveSize(18);
   const iconSize22 = useResponsiveSize(22);
+
   return (
     <div
       className={clsx(
-        'sidebar-header flex h-11 items-center justify-between pr-2',
-        isTrafficLightVisible ? 'pl-20' : 'pl-1.5',
+        'sidebar-header flex h-11 items-center justify-between pe-2',
+        isTrafficLightVisible ? 'pl-20' : 'ps-1.5',
       )}
+      dir='ltr'
     >
       <div className='flex items-center gap-x-8'>
         <button
@@ -36,7 +38,10 @@ const SidebarHeader: React.FC<{
         >
           <MdArrowBackIosNew size={iconSize22} />
         </button>
-        <button className='btn btn-ghost h-8 min-h-8 w-8 p-0' onClick={onGoToLibrary}>
+        <button
+          className='btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
+          onClick={onGoToLibrary}
+        >
           <GiBookshelf className='fill-base-content' />
         </button>
       </div>

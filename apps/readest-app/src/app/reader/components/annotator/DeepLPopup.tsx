@@ -12,12 +12,16 @@ const LANGUAGES = {
   DE: 'German',
   FR: 'French',
   ES: 'Spanish',
-  ID: 'Indonesian',
   IT: 'Italian',
+  EL: 'Greek',
   PT: 'Portuguese',
   NL: 'Dutch',
   PL: 'Polish',
+  UK: 'Ukrainian',
   RU: 'Russian',
+  AR: 'Arabic',
+  TR: 'Turkish',
+  ID: 'Indonesian',
   KO: 'Korean',
   JA: 'Japanese',
   'ZH-HANS': 'Chinese (Simplified)',
@@ -99,7 +103,11 @@ const DeepLPopup: React.FC<DeepLPopupProps> = ({
         setTranslation(translatedText);
       } catch (err) {
         console.error(err);
-        setError(_('Unable to fetch the translation. Try again later.'));
+        if (!token) {
+          setError(_('Unable to fetch the translation. Please log in first and try again.'));
+        } else {
+          setError(_('Unable to fetch the translation. Try again later.'));
+        }
       } finally {
         setLoading(false);
       }
@@ -165,13 +173,7 @@ const DeepLPopup: React.FC<DeepLPopupProps> = ({
           ) : (
             <div>
               <p className='text-base'>{translation || 'No translation available.'}</p>
-              <div className='pt-4 text-sm opacity-60'>
-                Translated by{' '}
-                <a href='https://www.deepl.com/' target='_blank' rel='noopener noreferrer'>
-                  DeepL
-                </a>
-                .
-              </div>
+              <div className='pt-4 text-sm opacity-60'>Translated by DeepL.</div>
             </div>
           )}
         </div>

@@ -1,10 +1,10 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 
-import NumberInput from './NumberInput';
-import FontDropdown from './FontDropDown';
 import {
   ANDROID_FONTS,
+  CJK_FONTS_PATTENS,
+  CJK_NAMES_PATTENS,
   IOS_FONTS,
   LINUX_FONTS,
   MACOS_FONTS,
@@ -14,13 +14,14 @@ import {
   WINDOWS_FONTS,
 } from '@/services/constants';
 import { useReaderStore } from '@/store/readerStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useTheme } from '@/hooks/useTheme';
-import { getStyles } from '@/utils/style';
-import { getOSPlatform } from '@/utils/misc';
-import { FONT_ENUM_SUPPORTED_OS_PLATFORMS, getSysFontsList } from '@/utils/font';
+import { useEnv } from '@/context/EnvContext';
+import { getOSPlatform, isCJKEnv } from '@/utils/misc';
+import { getSysFontsList } from '@/utils/font';
 import { isTauriAppPlatform } from '@/services/environment';
+import { saveViewSettings } from '../../utils/viewSettingsHelper';
+import NumberInput from './NumberInput';
+import FontDropdown from './FontDropDown';
 
 interface FontFaceProps {
   className?: string;
@@ -44,27 +45,29 @@ const FontFace = ({
   moreOptions,
   selected,
   onSelect,
-}: FontFaceProps) => (
-  <div className={clsx('config-item', className)}>
-    <span className=''>{label}</span>
-    <FontDropdown
-      family={family}
-      options={options.map((option) => ({ option, label: option }))}
-      moreOptions={moreOptions?.map((option) => ({ option, label: option })) ?? []}
-      selected={selected}
-      onSelect={onSelect}
-      onGetFontFamily={handleFontFaceFont}
-    />
-  </div>
-);
+}: FontFaceProps) => {
+  const _ = useTranslation();
+  return (
+    <div className={clsx('config-item', className)}>
+      <span className=''>{label}</span>
+      <FontDropdown
+        family={family}
+        options={options.map((option) => ({ option, label: _(option) }))}
+        moreOptions={moreOptions?.map((option) => ({ option, label: option })) ?? []}
+        selected={selected}
+        onSelect={onSelect}
+        onGetFontFamily={handleFontFaceFont}
+      />
+    </div>
+  );
+};
 
 const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
-  const { settings, isFontLayoutSettingsGlobal, setSettings } = useSettingsStore();
-  const { getView, getViewSettings, setViewSettings } = useReaderStore();
-  const view = getView(bookKey);
+  const { envConfig, appService } = useEnv();
+  const { getView, getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey)!;
-  const { themeCode } = useTheme();
+  const view = getView(bookKey)!;
 
   const fontFamilyOptions = [
     {
@@ -103,13 +106,14 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const [minFontSize, setMinFontSize] = useState(viewSettings.minimumFontSize!);
   const [overrideFont, setOverrideFont] = useState(viewSettings.overrideFont!);
   const [defaultFont, setDefaultFont] = useState(viewSettings.defaultFont!);
+  const [defaultCJKFont, setDefaultCJKFont] = useState(viewSettings.defaultCJKFont!);
   const [serifFont, setSerifFont] = useState(viewSettings.serifFont!);
   const [sansSerifFont, setSansSerifFont] = useState(viewSettings.sansSerifFont!);
   const [monospaceFont, setMonospaceFont] = useState(viewSettings.monospaceFont!);
   const [fontWeight, setFontWeight] = useState(viewSettings.fontWeight!);
 
   useEffect(() => {
-    if (isTauriAppPlatform() && FONT_ENUM_SUPPORTED_OS_PLATFORMS.includes(osPlatform)) {
+    if (isTauriAppPlatform() && appService?.hasSysFontsList) {
       getSysFontsList().then((fonts) => {
         setSysFonts(fonts);
       });
@@ -118,90 +122,47 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, []);
 
   useEffect(() => {
-    viewSettings.defaultFont = defaultFont;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.defaultFont = defaultFont;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'defaultFont', defaultFont);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultFont]);
 
   useEffect(() => {
-    viewSettings.defaultFontSize = defaultFontSize;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.defaultFontSize = defaultFontSize;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'defaultCJKFont', defaultCJKFont);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCJKFont]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'defaultFontSize', defaultFontSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultFontSize]);
 
   useEffect(() => {
-    viewSettings.minimumFontSize = minFontSize;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.minimumFontSize = minFontSize;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'minimumFontSize', minFontSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minFontSize]);
 
   useEffect(() => {
-    viewSettings.fontWeight = fontWeight;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.fontWeight = fontWeight;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'fontWeight', fontWeight);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fontWeight]);
 
   useEffect(() => {
-    viewSettings.serifFont = serifFont;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.serifFont = serifFont;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'serifFont', serifFont);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serifFont]);
 
   useEffect(() => {
-    viewSettings.sansSerifFont = sansSerifFont;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.sansSerifFont = sansSerifFont;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'sansSerifFont', sansSerifFont);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sansSerifFont]);
 
   useEffect(() => {
-    viewSettings.monospaceFont = monospaceFont;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.monospaceFont = monospaceFont;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'monospaceFont', monospaceFont);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monospaceFont]);
 
   useEffect(() => {
-    viewSettings.overrideFont = overrideFont;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.overrideFont = overrideFont;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'overrideFont', overrideFont);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overrideFont]);
 
@@ -225,7 +186,6 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         <div className='card border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
             <NumberInput
-              className='config-item-top'
               label={_('Default Font Size')}
               value={defaultFontSize}
               onChange={setDefaultFontSize}
@@ -233,7 +193,6 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               max={120}
             />
             <NumberInput
-              className='config-item-bottom'
               label={_('Minimum Font Size')}
               value={minFontSize}
               onChange={setMinFontSize}
@@ -249,7 +208,6 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         <div className='card border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
             <NumberInput
-              className='config-item-top'
               label={_('Font Weight')}
               value={fontWeight}
               onChange={setFontWeight}
@@ -265,7 +223,7 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         <h2 className='mb-2 font-medium'>{_('Font Family')}</h2>
         <div className='card border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
-            <div className='config-item config-item-top'>
+            <div className='config-item'>
               <span className=''>{_('Default Font')}</span>
               <FontDropdown
                 options={fontFamilyOptions}
@@ -275,7 +233,20 @@ const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               />
             </div>
 
-            <div className='config-item config-item-bottom'>
+            {(isCJKEnv() || view?.language.isCJK) && (
+              <FontFace
+                className='config-item-top'
+                family='serif'
+                label={_('CJK Font')}
+                options={sysFonts.filter(
+                  (font) => CJK_FONTS_PATTENS.test(font) || CJK_NAMES_PATTENS.test(font),
+                )}
+                selected={defaultCJKFont}
+                onSelect={setDefaultCJKFont}
+              />
+            )}
+
+            <div className='config-item'>
               <span className=''>{_('Override Book Font')}</span>
               <input
                 type='checkbox'

@@ -1,12 +1,12 @@
 import clsx from 'clsx';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { PiDotsThreeVerticalBold } from 'react-icons/pi';
 
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useTrafficLightStore } from '@/store/trafficLightStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
-import useTrafficLight from '@/hooks/useTrafficLight';
 import WindowButtons from '@/components/WindowButtons';
 import Dropdown from '@/components/Dropdown';
 import SidebarToggler from './SidebarToggler';
@@ -34,7 +34,13 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
 }) => {
   const { appService } = useEnv();
   const headerRef = useRef<HTMLDivElement>(null);
-  const { isTrafficLightVisible } = useTrafficLight();
+  const {
+    isTrafficLightVisible,
+    setTrafficLightVisibility,
+    initializeTrafficLightStore,
+    initializeTrafficLightListeners,
+    cleanupTrafficLightListeners,
+  } = useTrafficLightStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const { hoveredBookKey, setHoveredBookKey, bookKeys } = useReaderStore();
   const { isSideBarVisible } = useSidebarStore();
@@ -44,6 +50,25 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
     setIsDropdownOpen(isOpen);
     if (!isOpen) setHoveredBookKey('');
   };
+
+  useEffect(() => {
+    if (!appService?.hasTrafficLight) return;
+
+    initializeTrafficLightStore(appService);
+    initializeTrafficLightListeners();
+    setTrafficLightVisibility(true);
+    return () => {
+      cleanupTrafficLightListeners();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!appService?.hasTrafficLight) return;
+
+    setTrafficLightVisibility(isSideBarVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSideBarVisible]);
 
   return (
     <div
@@ -61,8 +86,10 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
       onMouseEnter={() => setHoveredBookKey(bookKey)}
       onMouseLeave={() => setHoveredBookKey('')}
     >
-      <div className='sidebar-bookmark-toggler bg-base-100 z-20 flex h-full items-center space-x-4'>
-        <SidebarToggler bookKey={bookKey} />
+      <div className='sidebar-bookmark-toggler bg-base-100 z-20 flex h-full items-center gap-x-4'>
+        <div className='hidden sm:flex'>
+          <SidebarToggler bookKey={bookKey} />
+        </div>
         <BookmarkToggler bookKey={bookKey} />
       </div>
 

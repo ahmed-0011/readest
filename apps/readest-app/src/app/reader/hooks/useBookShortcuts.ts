@@ -5,9 +5,9 @@ import useShortcuts from '@/hooks/useShortcuts';
 import useBooksManager from './useBooksManager';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useTheme } from '@/hooks/useTheme';
 import { getStyles } from '@/utils/style';
 import { tauriQuitApp } from '@/utils/window';
+import { eventDispatcher } from '@/utils/event';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants';
 
 interface UseBookShortcutsProps {
@@ -21,7 +21,6 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const { setFontLayoutSettingsDialogOpen } = useSettingsStore();
   const { toggleNotebook } = useNotebookStore();
   const { getNextBookKey } = useBooksManager();
-  const { themeCode } = useTheme();
   const viewSettings = getViewSettings(sideBarBookKey ?? '');
   const fontSize = viewSettings?.defaultFontSize ?? 16;
   const lineHeight = viewSettings?.lineHeight ?? 1.6;
@@ -92,6 +91,10 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     }
   };
 
+  const showSearchBar = () => {
+    eventDispatcher.dispatch('search', { term: '' });
+  };
+
   const zoomIn = () => {
     if (!sideBarBookKey) return;
     const view = getView(sideBarBookKey);
@@ -100,7 +103,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const zoomLevel = viewSettings!.zoomLevel + ZOOM_STEP;
     viewSettings!.zoomLevel = Math.min(zoomLevel, MAX_ZOOM_LEVEL);
     setViewSettings(sideBarBookKey, viewSettings!);
-    view?.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
+    view?.renderer.setStyles?.(getStyles(viewSettings!));
   };
 
   const zoomOut = () => {
@@ -111,7 +114,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const zoomLevel = viewSettings!.zoomLevel - ZOOM_STEP;
     viewSettings!.zoomLevel = Math.max(zoomLevel, MIN_ZOOM_LEVEL);
     setViewSettings(sideBarBookKey, viewSettings!);
-    view?.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
+    view?.renderer.setStyles?.(getStyles(viewSettings!));
   };
 
   const resetZoom = () => {
@@ -121,7 +124,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const viewSettings = getViewSettings(sideBarBookKey)!;
     viewSettings!.zoomLevel = 100;
     setViewSettings(sideBarBookKey, viewSettings!);
-    view?.renderer.setStyles?.(getStyles(viewSettings!, themeCode));
+    view?.renderer.setStyles?.(getStyles(viewSettings!));
   };
 
   useShortcuts(
@@ -131,6 +134,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       onToggleNotebook: toggleNotebook,
       onToggleScrollMode: toggleScrollMode,
       onOpenFontLayoutSettings: () => setFontLayoutSettingsDialogOpen(true),
+      onToggleSearchBar: showSearchBar,
       onReloadPage: reloadPage,
       onQuitApp: quitApp,
       onGoLeft: goLeft,

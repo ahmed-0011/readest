@@ -1,17 +1,18 @@
 import clsx from 'clsx';
-import React, { useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FaSearch } from 'react-icons/fa';
 import { PiPlus } from 'react-icons/pi';
 import { PiSelectionAllDuotone } from 'react-icons/pi';
-import { MdOutlineMenu } from 'react-icons/md';
-import { MdArrowBackIosNew } from 'react-icons/md';
+import { MdOutlineMenu, MdArrowBackIosNew } from 'react-icons/md';
+import { IoMdCloseCircle } from 'react-icons/io';
 
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
+import { useTrafficLightStore } from '@/store/trafficLightStore';
 import { navigateToLibrary } from '@/utils/nav';
-import useTrafficLight from '@/hooks/useTrafficLight';
+import { throttle } from '@/utils/throttle';
 import WindowButtons from '@/components/WindowButtons';
 import Dropdown from '@/components/Dropdown';
 import SettingsMenu from './SettingsMenu';
@@ -33,7 +34,15 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { appService } = useEnv();
-  const { isTrafficLightVisible } = useTrafficLight();
+  const {
+    isTrafficLightVisible,
+    initializeTrafficLightStore,
+    initializeTrafficLightListeners,
+    setTrafficLightVisibility,
+    cleanupTrafficLightListeners,
+  } = useTrafficLightStore();
+  const [searchQuery, setSearchQuery] = useState(searchParams?.get('q') ?? '');
+
   const headerRef = useRef<HTMLDivElement>(null);
   const iconSize16 = useResponsiveSize(16);
   const iconSize20 = useResponsiveSize(20);
@@ -42,6 +51,38 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
     onToggleSelectMode,
   });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const throttledUpdateQueryParam = useCallback(
+    throttle((value: string) => {
+      const params = new URLSearchParams(searchParams?.toString());
+      if (value) {
+        params.set('q', value);
+      } else {
+        params.delete('q');
+      }
+      router.push(`?${params.toString()}`);
+    }, 1000),
+    [searchParams],
+  );
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newQuery = e.target.value;
+    setSearchQuery(newQuery);
+    throttledUpdateQueryParam(newQuery);
+  };
+
+  useEffect(() => {
+    if (!appService?.hasTrafficLight) return;
+
+    initializeTrafficLightStore(appService);
+    initializeTrafficLightListeners();
+    setTrafficLightVisibility(true);
+    return () => {
+      cleanupTrafficLightListeners();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const windowButtonVisible = appService?.hasWindowBar && !isTrafficLightVisible;
   const isInGroupView = !!searchParams?.get('group');
 
@@ -49,7 +90,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
     <div
       ref={headerRef}
       className={clsx(
-        'titlebar h-13 z-10 flex w-full items-center py-2 pr-4 sm:pr-6',
+        'titlebar z-10 flex h-[52px] w-full items-center py-2 pr-4 sm:h-[48px] sm:pr-6',
         appService?.hasSafeAreaInset && 'mt-[env(safe-area-inset-top)]',
         isTrafficLightVisible ? 'pl-16' : 'pl-0 sm:pl-2',
       )}
@@ -74,7 +115,9 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
             </span>
             <input
               type='text'
+              value={searchQuery}
               placeholder={_('Search Books...')}
+              onChange={handleSearchChange}
               spellCheck='false'
               className={clsx(
                 'input rounded-badge bg-base-300/50 h-9 w-full pl-10 pr-10 sm:h-7',
@@ -84,6 +127,19 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
             />
           </div>
           <div className='absolute right-4 flex items-center space-x-2 text-gray-500 sm:space-x-4'>
+            {searchQuery && (
+              <button
+                type='button'
+                onClick={() => {
+                  setSearchQuery('');
+                  throttledUpdateQueryParam('');
+                }}
+                className='text-gray-400 hover:text-gray-600'
+                aria-label={_('Clear Search')}
+              >
+                <IoMdCloseCircle className='h-4 w-4' />
+              </button>
+            )}
             <span className='bg-base-content/50 mx-2 h-4 w-[0.5px]'></span>
             <Dropdown
               className='exclude-title-bar-mousedown dropdown-bottom flex h-6 cursor-pointer justify-center'

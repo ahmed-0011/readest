@@ -1,6 +1,7 @@
 import { EXTS } from '@/libs/document';
 import { Book, BookConfig, BookProgress, WritingMode } from '@/types/book';
-import { getUserLang, makeSafeFilename } from './misc';
+import { getUserLang, isContentURI, isValidURL, makeSafeFilename } from './misc';
+import { getStorageType } from './object';
 
 export const getDir = (book: Book) => {
   return `${book.hash}`;
@@ -8,7 +9,17 @@ export const getDir = (book: Book) => {
 export const getLibraryFilename = () => {
   return 'library.json';
 };
-export const getFilename = (book: Book) => {
+export const getRemoteBookFilename = (book: Book) => {
+  // S3 storage: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/userguide/object-keys.html
+  if (getStorageType() === 'r2') {
+    return `${book.hash}/${makeSafeFilename(book.title)}.${EXTS[book.format]}`;
+  } else if (getStorageType() === 's3') {
+    return `${book.hash}/${book.hash}.${EXTS[book.format]}`;
+  } else {
+    return '';
+  }
+};
+export const getLocalBookFilename = (book: Book) => {
   return `${book.hash}/${makeSafeFilename(book.title)}.${EXTS[book.format]}`;
 };
 export const getCoverFilename = (book: Book) => {
@@ -19,6 +30,15 @@ export const getConfigFilename = (book: Book) => {
 };
 export const isBookFile = (filename: string) => {
   return Object.values(EXTS).includes(filename.split('.').pop()!);
+};
+export const getFilename = (fileOrUri: string) => {
+  if (isValidURL(fileOrUri) || isContentURI(fileOrUri)) {
+    fileOrUri = decodeURI(fileOrUri);
+  }
+  const normalizedPath = fileOrUri.replace(/\\/g, '/');
+  const parts = normalizedPath.split('/');
+  const lastPart = parts.pop()!;
+  return lastPart.split('?')[0]!;
 };
 export const getBaseFilename = (filename: string) => {
   const normalizedPath = filename.replace(/\\/g, '/');
@@ -57,9 +77,9 @@ export const listFormater = (narrow = false, lang = userLang) => {
 export const getBookLangCode = (lang: string | string[] | undefined) => {
   try {
     const bookLang = typeof lang === 'string' ? lang : lang?.[0];
-    return bookLang ? bookLang.split('-')[0]! : 'en';
+    return bookLang ? bookLang.split('-')[0]! : '';
   } catch {
-    return 'en';
+    return '';
   }
 };
 
@@ -67,7 +87,7 @@ export const formatAuthors = (
   contributors: string | Contributor | [string | Contributor],
   bookLang?: string | string[],
 ) => {
-  const langCode = getBookLangCode(bookLang);
+  const langCode = getBookLangCode(bookLang) || 'en';
   return Array.isArray(contributors)
     ? listFormater(langCode === 'zh', langCode).format(
         contributors.map((contributor) =>
@@ -88,6 +108,10 @@ export const formatPublisher = (publisher: string | LanguageMap) => {
 
 export const formatLanguage = (lang: string | string[] | undefined) => {
   return Array.isArray(lang) ? lang.join(', ') : lang;
+};
+
+export const primaryLanguage = (lang: string | string[] | undefined) => {
+  return Array.isArray(lang) ? lang[0] : lang;
 };
 
 export const formatDate = (date: string | number | Date | undefined) => {
@@ -130,4 +154,12 @@ export const getBookDirFromWritingMode = (writingMode: WritingMode) => {
     default:
       return 'auto';
   }
+};
+
+export const getBookDirFromLanguage = (language: string | string[] | undefined) => {
+  const lang = primaryLanguage(language);
+  if (!lang) return 'auto';
+  const rtlLanguages = new Set(['ar', 'he', 'fa', 'ur', 'dv', 'ps', 'sd', 'yi']);
+  const primaryLang = lang.split('-')[0]!.toLowerCase();
+  return rtlLanguages.has(primaryLang) ? 'rtl' : 'auto';
 };

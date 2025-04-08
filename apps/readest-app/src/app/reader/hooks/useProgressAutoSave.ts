@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { throttle } from '@/utils/throttle';
 
 export const useProgressAutoSave = (bookKey: string) => {
-  const { envConfig, appService } = useEnv();
+  const { envConfig } = useEnv();
   const { getConfig, saveConfig } = useBookDataStore();
   const { getProgress } = useReaderStore();
   const progress = getProgress(bookKey);
@@ -22,9 +22,6 @@ export const useProgressAutoSave = (bookKey: string) => {
   );
 
   useEffect(() => {
-    // FIXME: Save book config when progress changes on Android
-    // until we can hook into the lifecycle of the Android app
-    if (!appService?.isAndroidApp || !progress) return;
     saveBookConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, bookKey]);

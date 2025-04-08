@@ -11,6 +11,7 @@ import { eventDispatcher } from '@/utils/event';
 import { parseSSMLLang } from '@/utils/ssml';
 import { getOSPlatform } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
+import { invokeUseBackgroundAudio } from '@/utils/bridge';
 import Popup from '@/components/Popup';
 import TTSPanel from './TTSPanel';
 import TTSIcon from './TTSIcon';
@@ -33,21 +34,42 @@ const TTSControl = () => {
   const [panelPosition, setPanelPosition] = useState<Position>();
   const [trianglePosition, setTrianglePosition] = useState<Position>();
 
+  const [timeoutOption, setTimeoutOption] = useState(0);
+  const [timeoutTimestamp, setTimeoutTimestamp] = useState(0);
+  const [timeoutFunc, setTimeoutFunc] = useState<ReturnType<typeof setTimeout> | null>(null);
+
   const popupWidth = useResponsiveSize(POPUP_WIDTH);
   const popupHeight = useResponsiveSize(POPUP_HEIGHT);
   const popupPadding = useResponsiveSize(POPUP_PADDING);
 
   const iconRef = useRef<HTMLDivElement>(null);
   const ttsControllerRef = useRef<TTSController | null>(null);
+  const unblockerAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // this enables WebAudio to play even when the mute toggle switch is ON
   const unblockAudio = () => {
-    const audio = document.createElement('audio');
-    audio.setAttribute('x-webkit-airplay', 'deny');
-    audio.preload = 'auto';
-    audio.loop = true;
-    audio.src = SILENCE_DATA;
-    audio.play();
+    if (unblockerAudioRef.current) return;
+    unblockerAudioRef.current = document.createElement('audio');
+    unblockerAudioRef.current.setAttribute('x-webkit-airplay', 'deny');
+    unblockerAudioRef.current.preload = 'auto';
+    unblockerAudioRef.current.loop = true;
+    unblockerAudioRef.current.src = SILENCE_DATA;
+    unblockerAudioRef.current.play();
+  };
+
+  const releaseUnblockAudio = () => {
+    if (!unblockerAudioRef.current) return;
+    try {
+      unblockerAudioRef.current.pause();
+      unblockerAudioRef.current.currentTime = 0;
+      unblockerAudioRef.current.removeAttribute('src');
+      unblockerAudioRef.current.src = '';
+      unblockerAudioRef.current.load();
+      unblockerAudioRef.current = null;
+      console.log('Unblock audio released');
+    } catch (err) {
+      console.warn('Error releasing unblock audio:', err);
+    }
   };
 
   useEffect(() => {
@@ -94,6 +116,9 @@ const TTSControl = () => {
     setShowIndicator(true);
 
     try {
+      if (appService?.isIOSApp) {
+        await invokeUseBackgroundAudio({ enabled: true });
+      }
       if (getOSPlatform() === 'ios' || appService?.isIOSApp) {
         unblockAudio();
       }
@@ -102,14 +127,15 @@ const TTSControl = () => {
       await ttsController.initViewTTS();
       const ssml = view.tts?.from(range);
       if (ssml) {
+        const lang = parseSSMLLang(ssml) || 'en';
+        setTtsLang(lang);
+        setIsPlaying(true);
+
+        ttsController.setLang(lang);
         ttsController.setRate(viewSettings.ttsRate);
         ttsController.setVoice(viewSettings.ttsVoice);
         ttsController.speak(ssml);
         ttsControllerRef.current = ttsController;
-
-        const lang = parseSSMLLang(ssml) || 'en';
-        setTtsLang(lang);
-        setIsPlaying(true);
       }
     } catch (error) {
       eventDispatcher.dispatch('toast', {
@@ -120,11 +146,8 @@ const TTSControl = () => {
     }
   };
 
-  const handleTTSStop = async (event: CustomEvent) => {
-    const { bookKey: stopBookKey } = event.detail;
-    if (bookKey === stopBookKey) {
-      handleStop();
-    }
+  const handleTTSStop = async () => {
+    handleStop();
   };
 
   const handleQueryIsSpeaking = () => {
@@ -175,6 +198,12 @@ const TTSControl = () => {
       setIsPlaying(false);
       setShowPanel(false);
       setShowIndicator(false);
+    }
+    if (appService?.isIOSApp) {
+      await invokeUseBackgroundAudio({ enabled: false });
+    }
+    if (getOSPlatform() === 'ios' || appService?.isIOSApp) {
+      releaseUnblockAudio();
     }
   };
 
@@ -229,6 +258,23 @@ const TTSControl = () => {
     return '';
   };
 
+  const handleSelectTimeout = (value: number) => {
+    setTimeoutOption(value);
+    if (timeoutFunc) {
+      clearTimeout(timeoutFunc);
+    }
+    if (value > 0) {
+      setTimeoutFunc(
+        setTimeout(() => {
+          handleStop();
+        }, value * 1000),
+      );
+      setTimeoutTimestamp(Date.now() + value * 1000);
+    } else {
+      setTimeoutTimestamp(0);
+    }
+  };
+
   const updatePanelPosition = () => {
     if (iconRef.current) {
       const rect = iconRef.current.getBoundingClientRect();
@@ -276,8 +322,8 @@ const TTSControl = () => {
           className={clsx(
             'fixed right-6 h-12 w-12',
             appService?.hasSafeAreaInset
-              ? 'bottom-[calc(env(safe-area-inset-bottom)+48px)]'
-              : 'bottom-12',
+              ? 'bottom-[calc(env(safe-area-inset-bottom)+70px)]'
+              : 'bottom-[70px] sm:bottom-14',
           )}
         >
           <TTSIcon isPlaying={isPlaying} onClick={togglePopup} />
@@ -295,14 +341,16 @@ const TTSControl = () => {
             bookKey={bookKey}
             ttsLang={ttsLang}
             isPlaying={isPlaying}
+            timeoutOption={timeoutOption}
+            timeoutTimestamp={timeoutTimestamp}
             onTogglePlay={handleTogglePlay}
             onBackward={handleBackward}
             onForward={handleForward}
-            onStop={handleStop}
             onSetRate={handleSetRate}
             onGetVoices={handleGetVoices}
             onSetVoice={handleSetVoice}
             onGetVoiceId={handleGetVoiceId}
+            onSelectTimeout={handleSelectTimeout}
           />
         </Popup>
       )}

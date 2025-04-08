@@ -1,5 +1,124 @@
 {
   "releases": {
+    "0.9.31": {
+      "date": "2025-04-08",
+      "notes": [
+        "iOS: Text-to-Speech (TTS) now works in the background",
+        "Android: Import files from native file manager",
+        "Desktop: Add option to keep window on top",
+        "Vertical layout for highlighting tools",
+        "Added options to auto-stop TTS after timeout",
+        "Added book search functionality in bookshelf",
+        "Improved font support for CJK users"
+      ]
+    },
+    "0.9.30": {
+      "date": "2025-04-05",
+      "notes": [
+        "Added fixed storage quata when running the app in self-hosted mode",
+        "Link colors will only change when you override fonts",
+        "Added cache for native files for better performance"
+      ]
+    },
+    "0.9.29": {
+      "date": "2025-04-02",
+      "notes": [
+        "Improved Login on Android without needing to rely on external Chrome browser",
+        "Local large book files now load more efficiently on Android",
+        "Balanced the load of online service between different types of users to keep things running smoothly for everyone"
+      ]
+    },
+    "0.9.28": {
+      "date": "2025-03-30",
+      "notes": [
+        "Improved vertical reading mode with better support for Chinese punctuations",
+        "Fixed TXT file importing issue on desktop apps — TXT books now load reliably and display as expected",
+        "Improved annotation experience — highlighting tools are now properly dismissed when adding notes to avoid UI conflicts"
+      ]
+    },
+    "0.9.27": {
+      "date": "2025-03-29",
+      "notes": [
+        "Added option to swap click-to-flip area and reset password",
+        "Added global shortcuts for full-text search",
+        "Added support for both R2 and S3 storage in cloud sync",
+        "Improved TTS with fewer unintended pauses, faster startup, and support for preferred voices",
+        "Various fixes for rendering styles and UI layout"
+      ]
+    },
+    "0.9.26": {
+      "date": "2025-03-27",
+      "notes": [
+        "Support open book from file manager without importing",
+        "Add LXGW WenKai font in Serif fonts list",
+        "Various fixes on layout and styles on Windows and Android"
+      ]
+    },
+    "0.9.25": {
+      "date": "2025-03-24",
+      "notes": [
+        "Support exporting annotations in markdown format",
+        "Support importing TXT files",
+        "Support setting reader language in the UI",
+        "Add bottom action bar on mobile platforms",
+        "Various fixes on layout settings and styles"
+      ]
+    },
+    "0.9.23": {
+      "date": "2025-03-19",
+      "notes": [
+        "Add options to show/hide header and footer",
+        "Add responsive window size for popup footnotes",
+        "Fix theme color not applied on Safari browsers",
+        "Fix progress not updated to 100% when finished reading"
+      ]
+    },
+    "0.9.22": {
+      "date": "2025-03-16",
+      "notes": [
+        "Add theme color editor for more customization",
+        "Add border frame for vertical layout",
+        "Fix layout glitches on macOS in scroll mode",
+        "Various fixes and enhancements on translator, footnote, and scrollbar"
+      ]
+    },
+    "0.9.21": {
+      "date": "2025-03-10",
+      "notes": [
+        "Fix column height in vertical layout on mobile",
+        "Fix drag handle height not constant on mobile",
+        "Add fullscreen option on desktop",
+        "Add drag and drop to import books on desktop",
+        "Various fixes and enhancements on updater, footerbar and note"
+      ]
+    },
+    "0.9.20": {
+      "date": "2025-03-10",
+      "notes": [
+        "Fix column height in vertical layout on mobile",
+        "Fix drag handle height not constant on mobile",
+        "Add fullscreen option on desktop",
+        "Add drag and drop to import books on desktop",
+        "Various fixes and enhancements on updater, footerbar and note"
+      ]
+    },
+    "0.9.19": {
+      "date": "2025-03-07",
+      "notes": [
+        "Support custom CSS for Reader UI",
+        "Initial support of RTL layout for Arabic and Hebrew books",
+        "Various fixes and enhancements on layout and sync"
+      ]
+    },
+    "0.9.18": {
+      "date": "2025-02-26",
+      "notes": [
+        "Add user profile page and option to delete account in the cloud",
+        "Fix TTS failed to start with invalid book language",
+        "Enhancements on iOS with modals and annotation tools",
+        "UX enhancements with modern highlights colors"
+      ]
+    },
     "0.9.17": {
       "date": "2025-02-24",
       "notes": [

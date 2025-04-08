@@ -1,25 +1,34 @@
 import clsx from 'clsx';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import i18n from 'i18next';
+import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getStyles } from '@/utils/style';
-import { useTheme } from '@/hooks/useTheme';
+import { saveViewSettings } from '../../utils/viewSettingsHelper';
+import { TRANSLATED_LANGS } from '@/services/constants';
 import cssbeautify from 'cssbeautify';
 import cssValidate from '@/utils/css';
+import DropDown from './DropDown';
 
 const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
+  const { envConfig, appService } = useEnv();
   const { settings, isFontLayoutSettingsGlobal, setSettings } = useSettingsStore();
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey)!;
-  const { themeCode } = useTheme();
 
   const [animated, setAnimated] = useState(viewSettings.animated!);
   const [isDisableClick, setIsDisableClick] = useState(viewSettings.disableClick!);
+  const [swapClickArea, setSwapClickArea] = useState(viewSettings.swapClickArea!);
+  const [isContinuousScroll, setIsContinuousScroll] = useState(viewSettings.continuousScroll!);
   const [draftStylesheet, setDraftStylesheet] = useState(viewSettings.userStylesheet!);
   const [draftStylesheetSaved, setDraftStylesheetSaved] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [inputFocusInAndroid, setInputFocusInAndroid] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const handleUserStylesheetChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const cssInput = e.target.value;
@@ -52,14 +61,14 @@ const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setDraftStylesheet(formattedCSS);
     setDraftStylesheetSaved(true);
     viewSettings.userStylesheet = formattedCSS;
-    setViewSettings(bookKey, viewSettings);
+    setViewSettings(bookKey, { ...viewSettings });
 
     if (isFontLayoutSettingsGlobal) {
       settings.globalViewSettings.userStylesheet = formattedCSS;
       setSettings(settings);
     }
 
-    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings));
   };
 
   const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
@@ -67,13 +76,52 @@ const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     e.nativeEvent.stopImmediatePropagation();
   };
 
-  useEffect(() => {
-    viewSettings.animated = animated;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.animated = animated;
-      setSettings(settings);
+  const handleInputFocus = () => {
+    if (appService?.isAndroidApp) {
+      setInputFocusInAndroid(true);
     }
+    setTimeout(() => {
+      textareaRef.current?.scrollIntoView({
+        behavior: 'instant',
+        block: 'center',
+      });
+    }, 300);
+  };
+
+  const handleInputBlur = () => {
+    if (appService?.isAndroidApp) {
+      setTimeout(() => {
+        setInputFocusInAndroid(false);
+      }, 100);
+    }
+  };
+
+  const getCurrentUILangOption = () => {
+    const uiLanguage = viewSettings.uiLanguage;
+    return {
+      option: uiLanguage,
+      label:
+        uiLanguage === ''
+          ? _('Auto')
+          : TRANSLATED_LANGS[uiLanguage as keyof typeof TRANSLATED_LANGS],
+    };
+  };
+
+  const getUILangOptions = () => {
+    const langs = TRANSLATED_LANGS as Record<string, string>;
+    const options = Object.entries(langs).map(([option, label]) => ({ option, label }));
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    options.unshift({ option: '', label: _('Auto') });
+    return options;
+  };
+
+  const handleSelectUILang = (option: string) => {
+    saveViewSettings(envConfig, bookKey, 'uiLanguage', option, false, false);
+    i18n.changeLanguage(option ? option : navigator.language);
+  };
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'animated', animated, false, false);
     if (animated) {
       getView(bookKey)?.renderer.setAttribute('animated', '');
     } else {
@@ -83,22 +131,48 @@ const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, [animated]);
 
   useEffect(() => {
-    viewSettings.disableClick = isDisableClick;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.disableClick = isDisableClick;
-      setSettings(settings);
-    }
+    saveViewSettings(envConfig, bookKey, 'disableClick', isDisableClick, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDisableClick]);
 
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'swapClickArea', swapClickArea, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swapClickArea]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'continuousScroll', isContinuousScroll, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isContinuousScroll]);
+
   return (
-    <div className='my-4 w-full space-y-6'>
+    <div
+      className={clsx(
+        'my-4 w-full space-y-6',
+        inputFocusInAndroid && 'h-[50%] overflow-y-auto pb-[200px]',
+      )}
+    >
+      <div className='w-full'>
+        <h2 className='mb-2 font-medium'>{_('Language')}</h2>
+        <div className='card border-base-200 bg-base-100 border shadow'>
+          <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
+              <span className=''>{_('Language')}</span>
+              <DropDown
+                selected={getCurrentUILangOption()}
+                options={getUILangOptions()}
+                onSelect={handleSelectUILang}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className='w-full'>
         <h2 className='mb-2 font-medium'>{_('Animation')}</h2>
         <div className='card border-base-200 bg-base-100 border shadow'>
-          <div className='divide-y'>
-            <div className='config-item config-item-top config-item-bottom'>
+          <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
               <span className=''>{_('Paging Animation')}</span>
               <input
                 type='checkbox'
@@ -114,14 +188,33 @@ const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       <div className='w-full'>
         <h2 className='mb-2 font-medium'>{_('Behavior')}</h2>
         <div className='card border-base-200 bg-base-100 border shadow'>
-          <div className='divide-y'>
-            <div className='config-item config-item-top config-item-bottom'>
+          <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
+              <span className=''>{_('Continuous Scroll')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={isContinuousScroll}
+                onChange={() => setIsContinuousScroll(!isContinuousScroll)}
+              />
+            </div>
+            <div className='config-item'>
               <span className=''>{_('Disable Click-to-Flip')}</span>
               <input
                 type='checkbox'
                 className='toggle'
                 checked={isDisableClick}
                 onChange={() => setIsDisableClick(!isDisableClick)}
+              />
+            </div>
+            <div className='config-item'>
+              <span className=''>{_('Swap Click-to-Flip Area')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={swapClickArea}
+                disabled={isDisableClick}
+                onChange={() => setSwapClickArea(!swapClickArea)}
               />
             </div>
           </div>
@@ -135,6 +228,7 @@ const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         >
           <div className='relative p-1'>
             <textarea
+              ref={textareaRef}
               className={clsx(
                 'textarea textarea-ghost h-48 w-full border-0 p-3 text-base !outline-none sm:text-sm',
                 'placeholder:text-base-content/70',
@@ -142,6 +236,8 @@ const MiscPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               placeholder={_('Enter your custom CSS here...')}
               spellCheck='false'
               value={draftStylesheet}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
               onInput={handleInput}
               onKeyDown={handleInput}
               onKeyUp={handleInput}

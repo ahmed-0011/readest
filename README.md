@@ -26,13 +26,13 @@
   <a href="#screenshots">Screenshots</a> •
   <a href="#downloads">Downloads</a> •
   <a href="#getting-started">Getting Started</a> •
-  <a href="#contributors">Contributors</a> •
+  <a href="#troubleshooting">Troubleshooting</a> •
   <a href="#license">License</a>
 </p>
 
 <div align="center">
   <a href="https://readest.com" target="_blank">
-    <img src="./data/screenshots/landing_preview.png" alt="Readest Banner" width="100%" />
+    <img src="./data/screenshots/landing_all_platforms.png" alt="Readest Banner" width="100%" />
   </a>
 </div>
 
@@ -42,7 +42,7 @@
 
 | **Feature**                             | **Description**                                                                                | **Status** |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------- |
-| **Multi-Format Support**                | Support EPUB, MOBI, KF8 (AZW3), FB2, CBZ, PDF (experimental)                                   | ✅         |
+| **Multi-Format Support**                | Support EPUB, MOBI, KF8 (AZW3), FB2, CBZ, TXT, PDF (experimental)                              | ✅         |
 | **Scroll/Page View Modes**              | Switch between scrolling or paginated reading modes.                                           | ✅         |
 | **Full-Text Search**                    | Search across the entire book to find relevant sections.                                       | ✅         |
 | **Annotations and Highlighting**        | Add highlights, bookmarks, and notes to enhance your reading experience.                       | ✅         |
@@ -80,7 +80,7 @@ Stay tuned for continuous improvements and updates! Contributions and suggestion
 
 ![DeepL](./data/screenshots/deepl.png)
 
-![TTS](./data/screenshots/tts_control.png)
+![TTS](./data/screenshots/tts_speak_aloud.png)
 
 ![Footnote](./data/screenshots/footnote_popover.png)
 
@@ -94,10 +94,9 @@ Stay tuned for continuous improvements and updates! Contributions and suggestion
 
 The Readest app is available for download! 🥳 🚀
 
-- macOS : Search for "Readest" on the [macOS App Store][link-macos-appstore].
-- Windows / Linux: Visit [https://readest.com][link-website] or the [Releases on GitHub][link-gh-releases].
+- macOS / iOS / iPadOS : Search for "Readest" on the [App Store][link-appstore], also available on TestFlight for beta test (send your Apple ID to readestapp@gmail.com to request access).
+- Windows / Linux / Android: Visit [https://readest.com][link-website] or the [Releases on GitHub][link-gh-releases].
 - Web: Visit [https://web.readest.com][link-web-readest].
-- iOS / Android: coming soon 👀
 
 ## Requirements
 
@@ -149,8 +148,9 @@ For Windows targets, “Build Tools for Visual Studio 2022” (or a higher editi
 ### 4. Build for Development
 
 ```bash
+# Start development for the Tauri app
 pnpm tauri dev
-# or start development for the Web version only
+# or start development for the Web app
 pnpm dev-web
 ```
 
@@ -199,13 +199,46 @@ nix develop ./ops#android # enter a dev shell for the android app
 
 Please check the [wiki][link-gh-wiki] of this project for more information on development.
 
+## Troubleshooting
+
+### 1. Readest Won’t Launch on Windows (Missing Edge WebView2 Runtime)
+
+**Symptom**
+
+- When you double-click readest.exe, nothing happens. No window appears, and Task Manager does not show the process.
+- This can affect both the standard installer and the portable version.
+
+**Cause**
+
+- Microsoft Edge WebView2 Runtime is either missing, outdated, or improperly installed on your system. Readest depends on WebView2 to render the interface on Windows.
+
+**How to Fix**
+
+1. Check if WebView2 is installed
+   - Open “Add or Remove Programs” (a.k.a. Apps & features) on Windows. Look for “Microsoft Edge WebView2 Runtime.”
+2. Install or Update WebView2
+   - Download the WebView2 Runtime directly from Microsoft: [link](https://developer.microsoft.com/en-us/microsoft-edge/webview2?form=MA13LH).
+   - If you prefer an offline installer, download the offline package and run it as an Administrator.
+3. Re-run Readest
+   - After installing/updating WebView2, launch readest.exe again.
+   - If you still encounter problems, reboot your PC and try again.
+
+**Additional Tips**
+
+- If reinstalling once doesn’t work, uninstall Edge WebView2 completely, then reinstall it with Administrator privileges.
+- Verify your Windows installation has the latest updates from Microsoft.
+
+**Still Stuck?**
+
+- See Issue [readest/readest#358](https://github.com/readest/readest/issues/358) for further details, or head over to our [Discord][link-discord] server and open a support discussion with detailed logs of your environment and the steps you’ve taken.
+
 ## Contributors
 
 Readest is open-source, and contributions are welcome! Feel free to open issues, suggest features, or submit pull requests. Please **review our [contributing guidelines](CONTRIBUTING.md) before you start**. We also welcome you to join our [Discord][link-discord] community for either support or contributing guidance.
 
 <a href="https://github.com/readest/readest/graphs/contributors">
   <p align="left">
-    <img width="300" src="https://contrib.rocks/image?repo=readest/readest" alt="A table of avatars from the project's contributors" />
+    <img width="500" src="https://contrib.rocks/image?repo=readest/readest" alt="A table of avatars from the project's contributors" />
   </p>
 </a>
 
@@ -241,7 +274,7 @@ The following fonts are utilized in this software, either bundled within the app
 [badge-commit-activity]: https://img.shields.io/github/commit-activity/m/readest/readest
 [badge-discord]: https://img.shields.io/discord/1314226120886976544?color=5865F2&label=discord&labelColor=black&logo=discord&logoColor=white&style=flat-square
 [badge-hellogithub]: https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=8a5b6ade2aee461a8bd94e59200682a7&claim_uid=eRLUbPOy2qZtDgw&theme=small
-[link-macos-appstore]: https://apps.apple.com/app/apple-store/id6738622779?pt=127463130&ct=github&mt=8
+[link-appstore]: https://apps.apple.com/app/apple-store/id6738622779?pt=127463130&ct=github&mt=8
 [link-website]: https://readest.com?utm_source=github&utm_medium=referral&utm_campaign=readme
 [link-web-readest]: https://web.readest.com
 [link-gh-releases]: https://github.com/readest/readest/releases

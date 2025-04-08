@@ -1,7 +1,8 @@
 import { Book } from '@/types/book';
-import { ToastType, FileSystem, BaseDir, AppPlatform } from '@/types/system';
+import { FileSystem, BaseDir, AppPlatform } from '@/types/system';
 import { getCoverFilename } from '@/utils/book';
 import { getOSPlatform, isValidURL } from '@/utils/misc';
+import { RemoteFile } from '@/utils/file';
 
 import { isPWA } from './environment';
 import { BaseAppService } from './appService';
@@ -51,6 +52,14 @@ const indexedDBFileSystem: FileSystem = {
       return URL.createObjectURL(new Blob([content]));
     } catch {
       return path;
+    }
+  },
+  async openFile(path: string, base: BaseDir, filename?: string) {
+    if (isValidURL(path)) {
+      return await new RemoteFile(path, filename).open();
+    } else {
+      const content = await this.readFile(path, base, 'binary');
+      return new File([content], filename || path);
     }
   },
   async copyFile(srcPath: string, dstPath: string, base: BaseDir) {
@@ -174,6 +183,9 @@ const indexedDBFileSystem: FileSystem = {
       request.onerror = () => reject(request.error);
     });
   },
+  getPrefix() {
+    return null;
+  },
 };
 
 export class WebAppService extends BaseAppService {
@@ -184,11 +196,13 @@ export class WebAppService extends BaseAppService {
   isAndroidApp = false;
   isIOSApp = false;
   hasTrafficLight = false;
+  hasWindow = false;
   hasWindowBar = false;
   hasContextMenu = false;
   hasRoundedWindow = false;
   hasSafeAreaInset = isPWA();
   hasHaptics = false;
+  hasSysFontsList = false;
 
   override resolvePath(fp: string, base: BaseDir): { baseDir: number; base: BaseDir; fp: string } {
     return resolvePath(fp, base);
@@ -198,16 +212,16 @@ export class WebAppService extends BaseAppService {
     return LOCAL_BOOKS_SUBDIR;
   }
 
+  async getCacheDir(): Promise<string> {
+    return 'Cache';
+  }
+
   async selectDirectory(): Promise<string> {
     throw new Error('selectDirectory is not supported in browser');
   }
 
   async selectFiles(): Promise<string[]> {
     throw new Error('selectFiles is not supported in browser');
-  }
-
-  async showMessage(msg: string, kind: ToastType = 'info'): Promise<void> {
-    alert(`${kind.toUpperCase()}: ${msg}`);
   }
 
   getCoverImageUrl = (book: Book): string => {

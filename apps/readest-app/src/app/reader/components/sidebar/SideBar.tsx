@@ -1,15 +1,17 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 
+import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { BookSearchResult } from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
+import { getBookDirFromLanguage } from '@/utils/book';
 import { useEnv } from '@/context/EnvContext';
-import { useTheme } from '@/hooks/useTheme';
 import { useDrag } from '@/hooks/useDrag';
+import { useThemeStore } from '@/store/themeStore';
 import SidebarHeader from './Header';
 import SidebarContent from './Content';
 import BookCard from './BookCard';
@@ -21,15 +23,17 @@ import useShortcuts from '@/hooks/useShortcuts';
 const MIN_SIDEBAR_WIDTH = 0.05;
 const MAX_SIDEBAR_WIDTH = 0.45;
 
+const VELOCITY_THRESHOLD = 0.5;
+
 const SideBar: React.FC<{
   onGoToLibrary: () => void;
 }> = ({ onGoToLibrary }) => {
   const { appService } = useEnv();
-  const { updateAppTheme } = useTheme();
+  const { updateAppTheme } = useThemeStore();
   const { settings } = useSettingsStore();
   const { sideBarBookKey } = useSidebarStore();
   const { getBookData } = useBookDataStore();
-  const { getView } = useReaderStore();
+  const { getView, getViewSettings } = useReaderStore();
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const [searchResults, setSearchResults] = useState<BookSearchResult[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -95,23 +99,33 @@ const SideBar: React.FC<{
     }
   };
 
-  const handleVerticalDragEnd = (velocity: number) => {
+  const handleVerticalDragEnd = (data: { velocity: number; clientY: number }) => {
     const sidebar = document.querySelector('.sidebar-container') as HTMLElement;
     const overlay = document.querySelector('.overlay') as HTMLElement;
 
     if (!sidebar || !overlay) return;
 
-    if (velocity > 0.5) {
-      sidebar.style.transition = `top ${0.15 / velocity}s ease-out`;
+    if (
+      data.velocity > VELOCITY_THRESHOLD ||
+      (data.velocity >= 0 && data.clientY >= window.innerHeight * 0.5)
+    ) {
+      const transitionDuration = 0.15 / Math.max(data.velocity, 0.5);
+      sidebar.style.transition = `top ${transitionDuration}s ease-out`;
       sidebar.style.top = '100%';
-      overlay.style.transition = `opacity ${0.15 / velocity}s ease-out`;
+      overlay.style.transition = `opacity ${transitionDuration}s ease-out`;
       overlay.style.opacity = '0';
       setTimeout(() => setSideBarVisible(false), 300);
+      if (appService?.hasHaptics) {
+        impactFeedback('medium');
+      }
     } else {
       sidebar.style.transition = 'top 0.3s ease-out';
       sidebar.style.top = '0%';
       overlay.style.transition = 'opacity 0.3s ease-out';
       overlay.style.opacity = '0.8';
+      if (appService?.hasHaptics) {
+        impactFeedback('medium');
+      }
     }
   };
 
@@ -149,11 +163,13 @@ const SideBar: React.FC<{
 
   if (!sideBarBookKey) return null;
 
+  const viewSettings = getViewSettings(sideBarBookKey);
   const bookData = getBookData(sideBarBookKey);
   if (!bookData || !bookData.book || !bookData.bookDoc) {
     return null;
   }
   const { book, bookDoc } = bookData;
+  const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
 
   return isSideBarVisible ? (
     <>
@@ -165,6 +181,7 @@ const SideBar: React.FC<{
           appService?.hasRoundedWindow && 'rounded-window-top-left rounded-window-bottom-left',
           !isSideBarPinned && 'shadow-2xl',
         )}
+        dir={viewSettings?.rtl && languageDir === 'rtl' ? 'rtl' : 'ltr'}
         style={{
           width: `${sideBarWidth}`,
           maxWidth: `${MAX_SIDEBAR_WIDTH * 100}%`,

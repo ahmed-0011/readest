@@ -1,26 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { MdOutlineAutoMode } from 'react-icons/md';
-import { MdOutlineTextRotationDown, MdOutlineTextRotationNone } from 'react-icons/md';
+import { MdOutlineTextRotationNone, MdTextRotateVertical } from 'react-icons/md';
+import { TbTextDirectionRtl } from 'react-icons/tb';
 
-import { ONE_COLUMN_MAX_INLINE_SIZE } from '@/services/constants';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useTheme } from '@/hooks/useTheme';
+import { isCJKEnv } from '@/utils/misc';
 import { getStyles } from '@/utils/style';
+import { getMaxInlineSize } from '@/utils/config';
 import { getBookDirFromWritingMode, getBookLangCode } from '@/utils/book';
+import { MIGHT_BE_RTL_LANGS } from '@/services/constants';
+import { saveViewSettings } from '../../utils/viewSettingsHelper';
 import NumberInput from './NumberInput';
 
 const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
-  const { settings, isFontLayoutSettingsGlobal, setSettings } = useSettingsStore();
+  const { envConfig } = useEnv();
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
   const { getBookData } = useBookDataStore();
   const view = getView(bookKey);
   const bookData = getBookData(bookKey)!;
   const viewSettings = getViewSettings(bookKey)!;
-  const { themeCode } = useTheme();
 
   const [paragraphMargin, setParagraphMargin] = useState(viewSettings.paragraphMargin!);
   const [lineHeight, setLineHeight] = useState(viewSettings.lineHeight!);
@@ -36,102 +38,57 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const [maxBlockSize, setMaxBlockSize] = useState(viewSettings.maxBlockSize!);
   const [writingMode, setWritingMode] = useState(viewSettings.writingMode!);
   const [overrideLayout, setOverrideLayout] = useState(viewSettings.overrideLayout!);
+  const [isScrolledMode, setScrolledMode] = useState(viewSettings.scrolled!);
+  const [doubleBorder, setDoubleBorder] = useState(viewSettings.doubleBorder!);
+  const [borderColor, setBorderColor] = useState(viewSettings.borderColor!);
+  const [showHeader, setShowHeader] = useState(viewSettings.showHeader!);
+  const [showFooter, setShowFooter] = useState(viewSettings.showFooter!);
 
   useEffect(() => {
-    viewSettings.paragraphMargin = paragraphMargin;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.paragraphMargin = paragraphMargin;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'paragraphMargin', paragraphMargin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paragraphMargin]);
 
   useEffect(() => {
-    viewSettings.lineHeight = lineHeight;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.lineHeight = lineHeight;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'lineHeight', lineHeight);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineHeight]);
 
   useEffect(() => {
-    viewSettings.wordSpacing = wordSpacing;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.wordSpacing = wordSpacing;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'wordSpacing', wordSpacing);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wordSpacing]);
 
   useEffect(() => {
-    viewSettings.letterSpacing = letterSpacing;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.letterSpacing = letterSpacing;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'letterSpacing', letterSpacing);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [letterSpacing]);
 
   useEffect(() => {
-    viewSettings.textIndent = textIndent;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.textIndent = textIndent;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'textIndent', textIndent);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textIndent]);
 
   useEffect(() => {
-    viewSettings.fullJustification = fullJustification;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.fullJustification = fullJustification;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'fullJustification', fullJustification);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullJustification]);
 
   useEffect(() => {
-    viewSettings.hyphenation = hyphenation;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.hyphenation = hyphenation;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'hyphenation', hyphenation);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hyphenation]);
 
   useEffect(() => {
-    viewSettings.marginPx = marginPx;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.marginPx = marginPx;
-      setSettings(settings);
-    }
+    if (marginPx === viewSettings.marginPx) return;
+    saveViewSettings(envConfig, bookKey, 'marginPx', marginPx, false, false);
     view?.renderer.setAttribute('margin', `${marginPx}px`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marginPx]);
 
   useEffect(() => {
-    viewSettings.gapPercent = gapPercent;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.gapPercent = gapPercent;
-      setSettings(settings);
-    }
+    if (gapPercent === viewSettings.gapPercent) return;
+    saveViewSettings(envConfig, bookKey, 'gapPercent', gapPercent, false, false);
     view?.renderer.setAttribute('gap', `${gapPercent}%`);
     if (viewSettings.scrolled) {
       view?.renderer.setAttribute('flow', 'scrolled');
@@ -140,80 +97,148 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, [gapPercent]);
 
   useEffect(() => {
-    viewSettings.maxColumnCount = maxColumnCount;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.maxColumnCount = maxColumnCount;
-      setSettings(settings);
-    }
+    if (maxColumnCount === viewSettings.maxColumnCount) return;
+    saveViewSettings(envConfig, bookKey, 'maxColumnCount', maxColumnCount, false, false);
     view?.renderer.setAttribute('max-column-count', maxColumnCount);
-    view?.renderer.setAttribute(
-      'max-inline-size',
-      `${maxColumnCount === 1 || viewSettings.scrolled ? ONE_COLUMN_MAX_INLINE_SIZE : maxInlineSize}px`,
-    );
+    view?.renderer.setAttribute('max-inline-size', `${getMaxInlineSize(viewSettings)}px`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxColumnCount]);
 
   useEffect(() => {
-    viewSettings.maxInlineSize = maxInlineSize;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.maxInlineSize = maxInlineSize;
-      setSettings(settings);
-    }
-    view?.renderer.setAttribute(
-      'max-inline-size',
-      `${maxColumnCount === 1 || viewSettings.scrolled ? ONE_COLUMN_MAX_INLINE_SIZE : maxInlineSize}px`,
-    );
+    if (maxInlineSize === viewSettings.maxInlineSize) return;
+    saveViewSettings(envConfig, bookKey, 'maxInlineSize', maxInlineSize, false, false);
+    view?.renderer.setAttribute('max-inline-size', `${getMaxInlineSize(viewSettings)}px`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxInlineSize]);
 
   useEffect(() => {
-    viewSettings.maxBlockSize = maxBlockSize;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.maxBlockSize = maxBlockSize;
-      setSettings(settings);
-    }
+    if (maxBlockSize === viewSettings.maxBlockSize) return;
+    saveViewSettings(envConfig, bookKey, 'maxBlockSize', maxBlockSize, false, false);
     view?.renderer.setAttribute('max-block-size', `${maxBlockSize}px`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxBlockSize]);
 
   useEffect(() => {
+    if (writingMode === viewSettings.writingMode) return;
     // global settings are not supported for writing mode
-    viewSettings.writingMode = writingMode;
-    setViewSettings(bookKey, viewSettings);
+    const prevWritingMode = viewSettings.writingMode;
+    if (writingMode.includes('vertical')) {
+      viewSettings.vertical = true;
+    } else {
+      viewSettings.vertical = false;
+    }
+    saveViewSettings(envConfig, bookKey, 'writingMode', writingMode, true);
     if (view) {
-      view.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+      view.renderer.setStyles?.(getStyles(viewSettings));
       view.book.dir = getBookDirFromWritingMode(writingMode);
+    }
+    if (
+      prevWritingMode !== writingMode &&
+      (['horizontal-rl', 'vertical-rl'].includes(writingMode) ||
+        ['horizontal-rl', 'vertical-rl'].includes(prevWritingMode))
+    ) {
+      setTimeout(() => window.location.reload(), 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writingMode]);
 
   useEffect(() => {
-    viewSettings.overrideLayout = overrideLayout;
-    setViewSettings(bookKey, viewSettings);
-    if (isFontLayoutSettingsGlobal) {
-      settings.globalViewSettings.overrideLayout = overrideLayout;
-      setSettings(settings);
-    }
-    view?.renderer.setStyles?.(getStyles(viewSettings, themeCode));
+    saveViewSettings(envConfig, bookKey, 'overrideLayout', overrideLayout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overrideLayout]);
 
+  useEffect(() => {
+    if (isScrolledMode === viewSettings.scrolled) return;
+    saveViewSettings(envConfig, bookKey, 'scrolled', isScrolledMode);
+    getView(bookKey)?.renderer.setAttribute('flow', isScrolledMode ? 'scrolled' : 'paginated');
+    getView(bookKey)?.renderer.setAttribute(
+      'max-inline-size',
+      `${getMaxInlineSize(viewSettings)}px`,
+    );
+    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings!));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScrolledMode]);
+
+  useEffect(() => {
+    if (doubleBorder === viewSettings.doubleBorder) return;
+    if (doubleBorder && viewSettings.vertical) {
+      viewSettings.gapPercent = Math.max(
+        viewSettings.gapPercent,
+        Math.ceil(4800 / window.innerWidth),
+      );
+      setGapPercent(viewSettings.gapPercent);
+      setViewSettings(bookKey, viewSettings);
+    }
+    saveViewSettings(envConfig, bookKey, 'doubleBorder', doubleBorder, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doubleBorder]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'borderColor', borderColor, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [borderColor]);
+
+  useEffect(() => {
+    if (showHeader === viewSettings.showHeader) return;
+    if (showHeader && !viewSettings.vertical) {
+      viewSettings.marginPx = Math.max(viewSettings.marginPx, 44);
+      setMarginPx(viewSettings.marginPx);
+      setViewSettings(bookKey, viewSettings);
+    } else if (showHeader && viewSettings.vertical) {
+      viewSettings.gapPercent = Math.max(
+        viewSettings.gapPercent,
+        Math.ceil(4800 / window.innerWidth),
+      );
+      setGapPercent(viewSettings.gapPercent);
+      setViewSettings(bookKey, viewSettings);
+    }
+    saveViewSettings(envConfig, bookKey, 'showHeader', showHeader, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHeader]);
+
+  useEffect(() => {
+    if (showFooter === viewSettings.showFooter) return;
+    if (showFooter && !viewSettings.vertical) {
+      viewSettings.marginPx = Math.max(viewSettings.marginPx, 44);
+      setMarginPx(viewSettings.marginPx);
+      setViewSettings(bookKey, viewSettings);
+    } else if (showFooter && viewSettings.vertical) {
+      viewSettings.gapPercent = Math.max(
+        viewSettings.gapPercent,
+        Math.ceil(4800 / window.innerWidth),
+      );
+      setGapPercent(viewSettings.gapPercent);
+      setViewSettings(bookKey, viewSettings);
+    }
+    saveViewSettings(envConfig, bookKey, 'showFooter', showFooter, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFooter]);
+
   const langCode = getBookLangCode(bookData.bookDoc?.metadata?.language);
-  const isCJKBook = langCode === 'zh' || langCode === 'ja' || langCode === 'ko';
+  const mightBeRTLBook = MIGHT_BE_RTL_LANGS.includes(langCode) || isCJKEnv();
 
   return (
     <div className='my-4 w-full space-y-6'>
-      {isCJKBook && (
+      <div className='w-full'>
+        <div className='flex items-center justify-between'>
+          <h2 className='font-medium'>{_('Scrolled Mode')}</h2>
+          <input
+            type='checkbox'
+            className='toggle'
+            checked={isScrolledMode}
+            onChange={() => setScrolledMode(!isScrolledMode)}
+          />
+        </div>
+      </div>
+
+      {mightBeRTLBook && (
         <div className='w-full'>
           <div className='flex items-center justify-between'>
             <h2 className='font-medium'>{_('Writing Mode')}</h2>
-            <div className='flex gap-2'>
+            <div className='flex gap-4'>
               <div className='lg:tooltip lg:tooltip-bottom' data-tip={_('Default')}>
                 <button
-                  className={`btn btn-ghost btn-circle ${writingMode === 'auto' ? 'btn-active bg-base-300' : ''}`}
+                  className={`btn btn-ghost btn-circle btn-sm ${writingMode === 'auto' ? 'btn-active bg-base-300' : ''}`}
                   onClick={() => setWritingMode('auto')}
                 >
                   <MdOutlineAutoMode />
@@ -222,7 +247,7 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
               <div className='lg:tooltip lg:tooltip-bottom' data-tip={_('Horizontal Direction')}>
                 <button
-                  className={`btn btn-ghost btn-circle ${writingMode === 'horizontal-tb' ? 'btn-active bg-base-300' : ''}`}
+                  className={`btn btn-ghost btn-circle btn-sm ${writingMode === 'horizontal-tb' ? 'btn-active bg-base-300' : ''}`}
                   onClick={() => setWritingMode('horizontal-tb')}
                 >
                   <MdOutlineTextRotationNone />
@@ -231,11 +256,54 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
               <div className='lg:tooltip lg:tooltip-bottom' data-tip={_('Vertical Direction')}>
                 <button
-                  className={`btn btn-ghost btn-circle ${writingMode === 'vertical-rl' ? 'btn-active bg-base-300' : ''}`}
+                  className={`btn btn-ghost btn-circle btn-sm ${writingMode === 'vertical-rl' ? 'btn-active bg-base-300' : ''}`}
                   onClick={() => setWritingMode('vertical-rl')}
                 >
-                  <MdOutlineTextRotationDown />
+                  <MdTextRotateVertical />
                 </button>
+              </div>
+
+              <div className='lg:tooltip lg:tooltip-bottom' data-tip={_('RTL Direction')}>
+                <button
+                  className={`btn btn-ghost btn-circle btn-sm ${writingMode === 'horizontal-rl' ? 'btn-active bg-base-300' : ''}`}
+                  onClick={() => setWritingMode('horizontal-rl')}
+                >
+                  <TbTextDirectionRtl />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewSettings.vertical && (
+        <div className='w-full'>
+          <h2 className='mb-2 font-medium'>{_('Border Frame')}</h2>
+          <div className='card bg-base-100 border-base-200 border shadow'>
+            <div className='divide-base-200 divide-y'>
+              <div className='config-item'>
+                <span className=''>{_('Double Border')}</span>
+                <input
+                  type='checkbox'
+                  className='toggle'
+                  checked={doubleBorder}
+                  onChange={() => setDoubleBorder(!doubleBorder)}
+                />
+              </div>
+
+              <div className='config-item'>
+                <span className=''>{_('Border Color')}</span>
+                <div className='flex gap-4'>
+                  <button
+                    className={`btn btn-circle btn-sm bg-red-300 hover:bg-red-500 ${borderColor === 'red' ? 'btn-active !bg-red-500' : ''}`}
+                    onClick={() => setBorderColor('red')}
+                  ></button>
+
+                  <button
+                    className={`btn btn-circle btn-sm bg-black/50 hover:bg-black ${borderColor === 'black' ? 'btn-active !bg-black' : ''}`}
+                    onClick={() => setBorderColor('black')}
+                  ></button>
+                </div>
               </div>
             </div>
           </div>
@@ -247,7 +315,6 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         <div className='card bg-base-100 border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
             <NumberInput
-              className='config-item-top'
               label={_('Paragraph Margin')}
               value={paragraphMargin}
               onChange={setParagraphMargin}
@@ -256,7 +323,6 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               step={0.5}
             />
             <NumberInput
-              className='config-item-top'
               label={_('Line Spacing')}
               value={lineHeight}
               onChange={setLineHeight}
@@ -264,26 +330,25 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               max={3.0}
               step={0.1}
             />
+            {langCode !== 'zh' && (
+              <NumberInput
+                label={_('Word Spacing')}
+                value={wordSpacing}
+                onChange={setWordSpacing}
+                min={-4}
+                max={8}
+                step={0.5}
+              />
+            )}
             <NumberInput
-              className='config-item-top'
-              label={_('Word Spacing')}
-              value={wordSpacing}
-              onChange={setWordSpacing}
-              min={-4}
-              max={8}
-              step={0.5}
-            />
-            <NumberInput
-              className='config-item-top'
               label={_('Letter Spacing')}
               value={letterSpacing}
               onChange={setLetterSpacing}
               min={-2}
               max={4}
-              step={0.1}
+              step={0.5}
             />
             <NumberInput
-              className='config-item-top'
               label={_('Text Indent')}
               value={textIndent}
               onChange={setTextIndent}
@@ -291,7 +356,7 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               max={4}
               step={1}
             />
-            <div className='config-item config-item-bottom'>
+            <div className='config-item'>
               <span className=''>{_('Full Justification')}</span>
               <input
                 type='checkbox'
@@ -300,7 +365,7 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                 onChange={() => setFullJustification(!fullJustification)}
               />
             </div>
-            <div className='config-item config-item-bottom'>
+            <div className='config-item'>
               <span className=''>{_('Hyphenation')}</span>
               <input
                 type='checkbox'
@@ -309,7 +374,7 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                 onChange={() => setHyphenation(!hyphenation)}
               />
             </div>
-            <div className='config-item config-item-bottom'>
+            <div className='config-item'>
               <span className=''>{_('Override Book Layout')}</span>
               <input
                 type='checkbox'
@@ -326,12 +391,29 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         <h2 className='mb-2 font-medium'>{_('Page')}</h2>
         <div className='card bg-base-100 border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
+              <span className=''>{_('Show Header')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={showHeader}
+                onChange={() => setShowHeader(!showHeader)}
+              />
+            </div>
+            <div className='config-item'>
+              <span className=''>{_('Show Footer')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={showFooter}
+                onChange={() => setShowFooter(!showFooter)}
+              />
+            </div>
             <NumberInput
-              className='config-item-top'
               label={_('Vertical Margins (px)')}
               value={marginPx}
               onChange={setMarginPx}
-              min={0}
+              min={!viewSettings.vertical && (showFooter || showHeader) ? 44 : 0}
               max={88}
               step={4}
             />
@@ -339,7 +421,11 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               label={_('Horizontal Margins (%)')}
               value={gapPercent}
               onChange={setGapPercent}
-              min={0}
+              min={
+                viewSettings.vertical && (showFooter || showHeader)
+                  ? Math.ceil(4800 / window.innerWidth)
+                  : 0
+              }
               max={30}
             />
             <NumberInput
@@ -350,18 +436,20 @@ const LayoutPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               max={4}
             />
             <NumberInput
-              label={_('Maximum Inline Size')}
+              label={viewSettings.vertical ? _('Maximum Column Height') : _('Maximum Column Width')}
               value={maxInlineSize}
               onChange={setMaxInlineSize}
-              min={500}
+              disabled={maxColumnCount === 1 || viewSettings.scrolled}
+              min={400}
               max={9999}
               step={100}
             />
             <NumberInput
-              label={_('Maximum Block Size')}
+              label={viewSettings.vertical ? _('Maximum Column Width') : _('Maximum Column Height')}
               value={maxBlockSize}
               onChange={setMaxBlockSize}
-              min={500}
+              disabled={maxColumnCount === 1 || viewSettings.scrolled}
+              min={400}
               max={9999}
               step={100}
             />

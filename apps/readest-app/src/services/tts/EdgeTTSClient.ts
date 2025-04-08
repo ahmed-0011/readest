@@ -3,6 +3,7 @@ import { TTSClient, TTSMessageEvent, TTSVoice } from './TTSClient';
 import { EdgeSpeechTTS, EdgeTTSPayload } from '@/libs/edgeTTS';
 import { parseSSMLLang, parseSSMLMarks } from '@/utils/ssml';
 import { TTSGranularity } from '@/types/view';
+import { TTSUtils } from './TTSUtils';
 
 export class EdgeTTSClient implements TTSClient {
   #rate = 1.0;
@@ -12,31 +13,19 @@ export class EdgeTTSClient implements TTSClient {
   #voices: TTSVoice[] = [];
   #edgeTTS: EdgeSpeechTTS;
 
-  static #audioContext: AudioContext | null;
-  #sourceNode: AudioBufferSourceNode | null = null;
+  #audioElement: HTMLAudioElement | null = null;
   #isPlaying = false;
   #pausedAt = 0;
   #startedAt = 0;
-  #audioBuffer: AudioBuffer | null = null;
   available = true;
 
   constructor() {
     this.#edgeTTS = new EdgeSpeechTTS();
   }
 
-  async initializeAudioContext() {
-    if (!EdgeTTSClient.#audioContext) {
-      EdgeTTSClient.#audioContext = new AudioContext();
-    }
-    if (EdgeTTSClient.#audioContext.state === 'suspended') {
-      await EdgeTTSClient.#audioContext.resume();
-    }
-  }
-
   async init() {
     this.#voices = EdgeSpeechTTS.voices;
     try {
-      await this.initializeAudioContext();
       await this.#edgeTTS.create({
         lang: 'en',
         text: 'test',
@@ -61,16 +50,12 @@ export class EdgeTTSClient implements TTSClient {
     preload = false,
   ): AsyncGenerator<TTSMessageEvent> {
     const { marks } = parseSSMLMarks(ssml);
-    const ssmlLang = parseSSMLLang(ssml) || 'en';
-    let lang = ssmlLang;
-    if (lang === 'en' && /[\p{Script=Han}]/u.test(ssml)) {
-      lang = 'zh';
-    }
-
+    const lang = parseSSMLLang(ssml) || 'en';
     let voiceId = 'en-US-AriaNeural';
-    if (!this.#voice || ssmlLang !== lang) {
-      const voices = await this.getVoices(lang);
-      this.#voice = voices[0] ? voices[0] : this.#voices.find((v) => v.id === voiceId) || null;
+    if (!this.#voice || this.#currentVoiceLang !== lang) {
+      const preferredVoiceId = TTSUtils.getPreferredVoice('edge-tts', lang);
+      const preferredVoice = this.#voices.find((v) => v.id === preferredVoiceId);
+      this.#voice = preferredVoice ? preferredVoice : (await this.getVoices(lang))[0] || null;
       this.#currentVoiceLang = lang;
     }
     if (this.#voice) {
@@ -78,15 +63,32 @@ export class EdgeTTSClient implements TTSClient {
     }
 
     if (preload) {
-      for (const mark of marks) {
+      // preload the first 2 marks immediately and the rest in the background
+      const maxImmediate = 2;
+      for (let i = 0; i < Math.min(maxImmediate, marks.length); i++) {
+        const mark = marks[i]!;
         await this.#edgeTTS.createAudio(this.getPayload(lang, mark.text, voiceId)).catch((err) => {
-          console.warn('Error preloading:', err);
+          console.warn('Error preloading mark', i, err);
         });
       }
+      if (marks.length > maxImmediate) {
+        (async () => {
+          for (let i = maxImmediate; i < marks.length; i++) {
+            const mark = marks[i]!;
+            try {
+              await this.#edgeTTS.createAudio(this.getPayload(lang, mark.text, voiceId));
+            } catch (err) {
+              console.warn('Error preloading mark (bg)', i, err);
+            }
+          }
+        })();
+      }
+
       yield {
         code: 'end',
         message: 'Preload finished',
       };
+
       return;
     } else {
       await this.stopInternal();
@@ -101,15 +103,12 @@ export class EdgeTTSClient implements TTSClient {
         break;
       }
       try {
-        this.#audioBuffer = await this.#edgeTTS.createAudio(
-          this.getPayload(lang, mark.text, voiceId),
-        );
-        if (!EdgeTTSClient.#audioContext) {
-          EdgeTTSClient.#audioContext = new AudioContext();
-        }
-        this.#sourceNode = EdgeTTSClient.#audioContext.createBufferSource();
-        this.#sourceNode.buffer = this.#audioBuffer;
-        this.#sourceNode.connect(EdgeTTSClient.#audioContext.destination);
+        const blob = await this.#edgeTTS.createAudio(this.getPayload(lang, mark.text, voiceId));
+        const url = URL.createObjectURL(blob);
+        this.#audioElement = new Audio(url);
+        const audio = this.#audioElement;
+        audio.setAttribute('x-webkit-airplay', 'deny');
+        audio.preload = 'auto';
 
         yield {
           code: 'boundary',
@@ -118,36 +117,37 @@ export class EdgeTTSClient implements TTSClient {
         };
 
         const result = await new Promise<TTSMessageEvent>((resolve) => {
-          if (EdgeTTSClient.#audioContext === null || this.#sourceNode === null) {
-            throw new Error('Audio context or source node is null');
-          }
-          this.#sourceNode.onended = (event: Event) => {
-            // chunk finished speaking or aborted speaking
-            if (signal.aborted || event.type === 'stopped') {
-              resolve({
-                code: 'error',
-                message: 'Aborted',
-              });
-              return;
+          const cleanUp = () => {
+            audio.onended = null;
+            audio.onerror = null;
+            audio.pause();
+            audio.src = '';
+            URL.revokeObjectURL(url);
+          };
+          audio.onended = () => {
+            cleanUp();
+            if (signal.aborted) {
+              resolve({ code: 'error', message: 'Aborted' });
+            } else {
+              resolve({ code: 'end', message: `Chunk finished: ${mark.name}` });
             }
-            resolve({
-              code: 'end',
-              message: `Chunk finished: ${mark.name}`,
-            });
+          };
+          audio.onerror = (e) => {
+            cleanUp();
+            console.warn('Audio playback error:', e);
+            resolve({ code: 'error', message: 'Audio playback error' });
           };
           if (signal.aborted) {
-            resolve({
-              code: 'error',
-              message: 'Aborted',
-            });
+            cleanUp();
+            resolve({ code: 'error', message: 'Aborted' });
             return;
           }
-          if (EdgeTTSClient.#audioContext.state === 'suspended') {
-            EdgeTTSClient.#audioContext.resume();
-          }
-          this.#sourceNode.start(0);
           this.#isPlaying = true;
-          this.#startedAt = EdgeTTSClient.#audioContext.currentTime;
+          audio.play().catch((err) => {
+            cleanUp();
+            console.error('Failed to play audio:', err);
+            resolve({ code: 'error', message: 'Playback failed: ' + err.message });
+          });
         });
         yield result;
       } catch (error) {
@@ -172,17 +172,17 @@ export class EdgeTTSClient implements TTSClient {
   }
 
   async pause() {
-    if (!this.#isPlaying || !EdgeTTSClient.#audioContext) return;
-    this.#pausedAt = EdgeTTSClient.#audioContext.currentTime - this.#startedAt;
-    await EdgeTTSClient.#audioContext.suspend();
+    if (!this.#isPlaying || !this.#audioElement) return;
+    this.#pausedAt = this.#audioElement.currentTime - this.#startedAt;
+    await this.#audioElement.pause();
     this.#isPlaying = false;
   }
 
   async resume() {
-    if (this.#isPlaying || !EdgeTTSClient.#audioContext) return;
-    await EdgeTTSClient.#audioContext.resume();
+    if (this.#isPlaying || !this.#audioElement) return;
+    await this.#audioElement.play();
     this.#isPlaying = true;
-    this.#startedAt = EdgeTTSClient.#audioContext.currentTime - this.#pausedAt;
+    this.#startedAt = this.#audioElement.currentTime - this.#pausedAt;
   }
 
   async stop() {
@@ -193,21 +193,18 @@ export class EdgeTTSClient implements TTSClient {
     this.#isPlaying = false;
     this.#pausedAt = 0;
     this.#startedAt = 0;
-    if (this.#sourceNode) {
-      try {
-        this.#sourceNode.stop();
-        if (this.#sourceNode?.onended) {
-          this.#sourceNode.onended(new Event('stopped'));
-        }
-      } catch (err) {
-        if (!(err instanceof Error) || err.name !== 'InvalidStateError') {
-          console.log('Error stopping source node:', err);
-        }
+    if (this.#audioElement) {
+      this.#audioElement.pause();
+      this.#audioElement.currentTime = 0;
+      if (this.#audioElement?.onended) {
+        this.#audioElement.onended(new Event('stopped'));
       }
-      this.#sourceNode.disconnect();
-      this.#sourceNode = null;
+      if (this.#audioElement.src?.startsWith('blob:')) {
+        URL.revokeObjectURL(this.#audioElement.src);
+      }
+      this.#audioElement.src = '';
+      this.#audioElement = null;
     }
-    this.#audioBuffer = null;
   }
 
   async setRate(rate: number) {

@@ -18,3 +18,14 @@ export const createSupabaseClient = (accessToken?: string) => {
     },
   });
 };
+
+export const createSupabaseAdminClient = () => {
+  const supabaseAdminKey = process.env['SUPABASE_ADMIN_KEY'] || '';
+  return createClient(supabaseUrl, supabaseAdminKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+};
